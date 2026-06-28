@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDeck, makePart } from '../domain/deck';
 import { checkCombination, KANJI_RECIPES, recipeKey } from '../domain/recipes';
-import { checkGameEnd, drawField, nextTurn, submitPart } from '../domain/engine';
+import { FIELD_SIZE, checkGameEnd, nextTurn, refillField, submitPart } from '../domain/engine';
 import type { GameState } from '../domain/types';
 
 function baseState(): GameState {
@@ -26,7 +26,7 @@ function baseState(): GameState {
     turnOrder: [0, 1],
     currentTurnIndex: 0,
     deck: [makePart('日', 4)],
-    field: makePart('木', 5),
+    field: [makePart('木', 5)],
     handSize: 2,
     winnerId: null,
   };
@@ -68,15 +68,34 @@ describe('recipes', () => {
 });
 
 describe('engine', () => {
-  it('scores a kanji and removes the submitted part on success', () => {
+  it('scores a kanji, removes the used hand+field cards, and refills', () => {
     const state = baseState();
+    // 目 を出す → 木+目=相。使った場札 木 は除去され、山札 日 が補充される。
     const result = submitPart(state, 0, state.players[0].hand[0].id);
 
     expect(result.outcome).toBe('success');
     expect(result.kanji?.char).toBe('相');
     expect(result.state.players[0].hand.map((part) => part.kind)).toEqual(['火']);
     expect(result.state.players[0].score).toHaveLength(1);
-    expect(result.state.field).toBeNull();
+    // 木 は消費され、補充で 日 が並ぶ。手番は据え置き（同じプレイヤー）。
+    expect(result.state.field.map((part) => part.kind)).toEqual(['日']);
+    expect(result.state.currentTurnIndex).toBe(0);
+  });
+
+  it('combines with a chosen field card when fieldPartId is given', () => {
+    const state: GameState = {
+      ...baseState(),
+      field: [makePart('木', 5), makePart('女', 6)],
+      deck: [],
+    };
+    // 子 を 女 に重ねる（女+子=好）。木 は残る。
+    const child = makePart('子', 7);
+    state.players[0].hand = [child];
+    const result = submitPart(state, 0, child.id, state.field[1].id);
+
+    expect(result.outcome).toBe('success');
+    expect(result.kanji?.char).toBe('好');
+    expect(result.state.field.map((p) => p.kind)).toEqual(['木']);
   });
 
   it('rejects actions from a player who does not have the turn', () => {
@@ -87,43 +106,44 @@ describe('engine', () => {
     expect(result.state).toBe(state);
   });
 
-  it('draws a fresh field card when advancing the turn', () => {
-    const state = baseState();
+  it('advances the turn and keeps the field across turns', () => {
+    const state = baseState(); // field=[木], deck=[日]
     const advanced = nextTurn(state);
 
     expect(advanced.currentTurnIndex).toBe(1);
-    expect(advanced.field?.kind).toBe('日');
+    // 場札は持ち越し、不足分のみ補充（木 + 日 で 2 枚に）。
+    expect(advanced.field.map((p) => p.kind).sort()).toEqual(['日', '木']);
     expect(advanced.deck).toHaveLength(0);
   });
 
-  it('can draw a new field card while keeping the same turn after success', () => {
+  it('keeps playing when the deck is empty but field cards remain', () => {
     const state = baseState();
-    const result = submitPart(state, 0, state.players[0].hand[0].id);
-    const continued = drawField(result.state);
-
-    expect(result.outcome).toBe('success');
-    expect(continued.currentTurnIndex).toBe(0);
-    expect(continued.field?.kind).toBe('日');
-  });
-
-  it('keeps playing when the deck is empty but a field card is still in play', () => {
-    const state = baseState();
-    // 場札が出ている間は手番を続けられる（checkGameEnd は終了しない）。
     const updated = checkGameEnd({
       ...state,
       deck: [],
-      field: makePart('木', 9),
+      field: [makePart('木', 9)],
     });
 
     expect(updated.phase).toBe('playing');
   });
 
-  it('finishes when the deck is exhausted and no field card can be drawn', () => {
+  it('refills the field up to FIELD_SIZE from the deck', () => {
+    const state: GameState = {
+      ...baseState(),
+      field: [],
+      deck: [makePart('木', 10), makePart('日', 11), makePart('月', 12), makePart('火', 13)],
+    };
+    const filled = refillField(state);
+    expect(filled.field).toHaveLength(FIELD_SIZE); // 3 枚補充
+    expect(filled.deck).toHaveLength(1); // 残り 1 枚
+  });
+
+  it('finishes when the deck is exhausted and the field is empty', () => {
     const state = baseState();
-    const finished = drawField({
+    const finished = checkGameEnd({
       ...state,
       deck: [],
-      field: null,
+      field: [],
     });
 
     expect(finished.phase).toBe('finished');

@@ -34,7 +34,8 @@ const GUEST_PEER_ID = 1; // 2 台 MVP: ホスト=0、子機=1。
 
 function noticeScopeKey(view: PublicGameState): string {
   const handKey = view.hand.map((part) => part.id).join('|');
-  return `${view.currentPlayerId ?? 'none'}:${view.field?.id ?? 'no-field'}:${handKey}`;
+  const fieldKey = view.field.map((part) => part.id).join('|') || 'no-field';
+  return `${view.currentPlayerId ?? 'none'}:${fieldKey}:${handKey}`;
 }
 
 /** GameState から、現在の手番プレイヤー視点の通知スコープキーを作る。 */
@@ -47,7 +48,7 @@ function defaultGameNotice(view: PublicGameState): string {
   if (view.phase === 'finished') {
     return 'ゲーム終了です。';
   }
-  if (!view.field) {
+  if (view.field.length === 0) {
     return '場札がありません。';
   }
   return '場札に合うパーツを選んでください。';
@@ -72,7 +73,7 @@ export default function App() {
   const hubRef = useRef<Hub | null>(null);
   const guestRef = useRef<GuestController | null>(null);
   const modeRef = useRef<'local' | 'host' | 'guest'>('local');
-  const handSizeRef = useRef(5);
+  const handSizeRef = useRef(6);
   const hostNameRef = useRef('ホスト');
   const guestNameRef = useRef('ゲスト');
 
@@ -115,13 +116,14 @@ export default function App() {
     setScreen({ name: 'game' });
   }
 
-  function localSubmit(part: Part) {
+  function localSubmit(part: Part, fieldPartId?: string) {
     if (!localGame) return;
-    const result = submitPart(localGame, localCurrentId, part.id);
+    const result = submitPart(localGame, localCurrentId, part.id, fieldPartId);
     const currentName = localGame.players.find((p) => p.id === localCurrentId)?.name ?? '';
 
     if (result.outcome === 'success' && result.kanji) {
-      const updated = result.state.phase === 'finished' ? result.state : drawField(result.state);
+      // submitPart が補充済み。同じプレイヤーが続けて行動する。
+      const updated = result.state;
       setLocalGame(updated);
       setFusion(result.kanji);
       // 結果通知も盤面（updated）が変わったらデフォルトへ戻すため scopeKey を付与。
@@ -219,16 +221,17 @@ export default function App() {
       guestNameRef.current,
     );
     guestRef.current = guest;
-    // JOIN は WELCOME 受信後に GuestController 内で送る（取りこぼし防止）。
+    guest.start(); // HELLO を送り、ホストに WELCOME を促す（JOIN は WELCOME 後に自動送信）。
     setNotice({ kind: 'neutral', text: '接続しました。ホストの状態を待っています…' });
     setScreen({ name: 'game' });
   }, [showFusion]);
 
   // ---- 操作ハンドラ（モードで振り分け） --------------------------------
-  function onSubmit(part: Part) {
-    if (modeRef.current === 'local') localSubmit(part);
-    else if (modeRef.current === 'host') hostRef.current?.submit(part.id);
-    else guestRef.current?.submit(part.id);
+  // fieldPartId 省略時は合体できる場札を自動選択（タップ操作）。指定時はドラッグ先。
+  function onSubmit(part: Part, fieldPartId?: string) {
+    if (modeRef.current === 'local') localSubmit(part, fieldPartId);
+    else if (modeRef.current === 'host') hostRef.current?.submit(part.id, fieldPartId);
+    else guestRef.current?.submit(part.id, fieldPartId);
   }
 
   function onPass() {

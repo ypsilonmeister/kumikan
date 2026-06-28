@@ -179,11 +179,18 @@ select {
 
 .game-shell {
   display: grid;
-  gap: 18px;
-  grid-template-rows: auto auto minmax(280px, 1fr) auto;
+  gap: 14px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 100vh;
+  /* 動的ビューポート対応（モバイルのアドレスバー分のズレを防ぐ）。 */
+  min-height: 100dvh;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.7), transparent 42%),
     #f4f2ed;
+}
+
+.game-header h1 {
+  font-size: clamp(1.6rem, 6vw, 3.2rem);
 }
 
 .game-header {
@@ -191,10 +198,6 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.game-header h1 {
-  font-size: clamp(2rem, 8vw, 4.4rem);
 }
 
 .score-row {
@@ -271,17 +274,24 @@ select {
 }
 
 .field-layout {
-  display: grid;
-  grid-template-columns: 112px minmax(170px, 260px);
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
 .deck-counter {
   display: grid;
   place-items: center;
-  width: 112px;
+  width: 88px;
   aspect-ratio: 4 / 5;
   border: 2px dashed #9d8e7b;
   border-radius: 8px;
@@ -302,18 +312,17 @@ select {
 .field-card {
   display: grid;
   place-items: center;
-  width: min(52vw, 260px);
-  min-width: 170px;
+  width: 100px;
   aspect-ratio: 4 / 5;
   border: 2px solid #243f3a;
   border-radius: 8px;
   background: #fffdfa;
-  box-shadow: 0 18px 34px rgba(36, 63, 58, 0.16);
+  box-shadow: 0 10px 22px rgba(36, 63, 58, 0.16);
 }
 
 .field-card strong {
   color: #18211f;
-  font-size: clamp(4.8rem, 18vw, 8rem);
+  font-size: 2.8rem;
   line-height: 1;
 }
 
@@ -336,14 +345,19 @@ select {
 
 .hand {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  /* auto-fill にして空トラックを確保 → 残り枚数が少なくてもカードが巨大化しない。
+     左寄せで自然に並べる。 */
+  grid-template-columns: repeat(auto-fill, minmax(84px, 96px));
+  justify-content: center;
   gap: 10px;
 }
 
 .kanji-card {
   display: grid;
   place-items: center;
-  min-height: 112px;
+  width: 100%;
+  max-width: 96px;
+  min-height: 96px;
   aspect-ratio: 4 / 5;
   border: 2px solid #c7bba9;
   border-radius: 8px;
@@ -365,8 +379,9 @@ select {
 
 .kanji-card span {
   max-width: 100%;
-  padding: 0 6px;
-  font-size: clamp(2.4rem, 12vw, 4.6rem);
+  padding: 0 4px;
+  /* カード幅が固定なので vw 連動をやめ、収まるサイズに固定。 */
+  font-size: 2.6rem;
   font-weight: 900;
   line-height: 1;
   overflow-wrap: anywhere;
@@ -493,20 +508,34 @@ select {
   }
 
   .field-layout {
-    grid-template-columns: 82px minmax(150px, 1fr);
     gap: 10px;
   }
 
+  .field-card {
+    width: 84px;
+  }
+
+  .field-card strong {
+    font-size: 2.4rem;
+  }
+
   .deck-counter {
-    width: 82px;
+    width: 72px;
   }
 
   .hand {
-    grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+    /* auto-fill 維持 + カードを少し小さく。残り少数でも巨大化しない。 */
+    grid-template-columns: repeat(auto-fill, minmax(72px, 84px));
+    gap: 8px;
   }
 
   .kanji-card {
-    min-height: 92px;
+    min-height: 84px;
+    max-width: 84px;
+  }
+
+  .kanji-card span {
+    font-size: 2.2rem;
   }
 
   .fusion {
@@ -640,6 +669,42 @@ select {
   border-radius: 12px;
   border: 2px solid #1f6f5b;
   background: #000;
+}
+
+/* ---- 手番の視認性（#2） ---- */
+.turn-badge {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #6b5b45;
+}
+
+.turn-badge.is-mine {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #1f6f5b;
+  color: #ffffff;
+  font-size: 0.95rem;
+  animation: turn-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes turn-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(31, 111, 91, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(31, 111, 91, 0);
+  }
+}
+
+/* 自分の番のときは盤面全体を縁取って気づきやすくする。 */
+.game-shell.is-my-turn {
+  box-shadow: inset 0 0 0 3px rgba(31, 111, 91, 0.55);
+}
+
+.game-shell.is-my-turn .table-area {
+  background: rgba(31, 111, 91, 0.05);
 }
 
 /* ---- P4 interaction polish ---- */

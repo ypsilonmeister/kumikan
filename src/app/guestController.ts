@@ -28,9 +28,18 @@ export class GuestController {
     transport.onMessage((msg) => this.handleMessage(msg));
   }
 
-  submit(partId: string): void {
+  /**
+   * 接続確立後に呼ぶ。HELLO を送ってホストに WELCOME の（再）送信を促す。
+   * open イベントと受信ハンドラ登録の前後関係に依存せず初期同期を確実にする。
+   */
+  start(): void {
     if (this.disposed) return;
-    this.transport.send({ type: 'ACTION_SUBMIT', payload: { partId } });
+    this.transport.send({ type: 'HELLO', payload: {} });
+  }
+
+  submit(partId: string, fieldPartId?: string): void {
+    if (this.disposed) return;
+    this.transport.send({ type: 'ACTION_SUBMIT', payload: { partId, fieldPartId } });
   }
 
   pass(): void {

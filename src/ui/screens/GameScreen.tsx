@@ -14,7 +14,8 @@ interface GameScreenProps {
     text: string;
   };
   fusion: Kanji | null;
-  onSubmit: (part: Part) => void;
+  /** fieldPartId 省略時はタップ（合体できる場札を自動選択）。 */
+  onSubmit: (part: Part, fieldPartId?: string) => void;
   onPass: () => void;
   onHint: () => void;
   onRestart: () => void;
@@ -40,16 +41,17 @@ export function GameScreen({
   onRestart,
 }: GameScreenProps) {
   const [draggingPartId, setDraggingPartId] = useState<string | null>(null);
-  const [isOverField, setIsOverField] = useState(false);
+  const [overFieldId, setOverFieldId] = useState<string | null>(null);
   const [ghost, setGhost] = useState<Ghost | null>(null);
-  const fieldRef = useRef<HTMLDivElement>(null);
+  // 各場札の DOM をドラッグ当たり判定のために保持。
+  const fieldRefs = useRef(new Map<string, HTMLDivElement>());
 
   const isFinished = view.phase === 'finished';
   const winner = view.players.find((player) => player.id === view.winnerId);
   const currentPlayer = view.players.find((player) => player.id === view.currentPlayerId);
   const viewer = view.players.find((player) => player.id === viewerId);
   const isMyTurn = view.currentPlayerId === viewerId;
-  const canAct = !isFinished && isMyTurn && !!view.field;
+  const canAct = !isFinished && isMyTurn && view.field.length > 0;
   const draggedPart = useMemo(
     () => view.hand.find((part) => part.id === draggingPartId) ?? null,
     [draggingPartId, view.hand],
@@ -64,10 +66,15 @@ export function GameScreen({
     dragging: boolean;
   } | null>(null);
 
-  function isOverFieldPoint(x: number, y: number): boolean {
-    const rect = fieldRef.current?.getBoundingClientRect();
-    if (!rect) return false;
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  /** 座標がどの場札の上か判定し、その場札 id を返す（無ければ null）。 */
+  function fieldIdAtPoint(x: number, y: number): string | null {
+    for (const [id, el] of fieldRefs.current) {
+      const rect = el.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return id;
+      }
+    }
+    return null;
   }
 
   // Pointer Events ベースのドラッグ（タッチ/マウス/ペン統一）。
@@ -85,22 +92,26 @@ export function GameScreen({
       g.dragging = true;
       setDraggingPartId(g.part.id);
       setGhost({ label: g.part.label, x: event.clientX, y: event.clientY });
-      setIsOverField(isOverFieldPoint(event.clientX, event.clientY));
+      setOverFieldId(fieldIdAtPoint(event.clientX, event.clientY));
     }
 
     function onUp(event: PointerEvent) {
       const g = gesture.current;
       if (!g || event.pointerId !== g.pointerId) return;
 
-      const droppedOnField = g.dragging && isOverFieldPoint(event.clientX, event.clientY);
+      const dropFieldId = g.dragging ? fieldIdAtPoint(event.clientX, event.clientY) : null;
       const wasTap = !g.dragging;
       gesture.current = null;
       setDraggingPartId(null);
-      setIsOverField(false);
+      setOverFieldId(null);
       setGhost(null);
 
-      // ドラッグして場札に重ねた / その場タップ、どちらも提出として扱う。
-      if (canAct && (droppedOnField || wasTap)) {
+      if (!canAct) return;
+      if (dropFieldId) {
+        // 特定の場札にドロップ → その場札と合体。
+        onSubmit(g.part, dropFieldId);
+      } else if (wasTap) {
+        // その場タップ → 合体できる場札を自動選択。
         onSubmit(g.part);
       }
     }
@@ -108,7 +119,7 @@ export function GameScreen({
     function onCancel() {
       gesture.current = null;
       setDraggingPartId(null);
-      setIsOverField(false);
+      setOverFieldId(null);
       setGhost(null);
     }
 
@@ -134,20 +145,21 @@ export function GameScreen({
   }
 
   // 盤面（手番・場札）が変わったらドラッグ状態を必ずリセットし、ハイライト残りを防ぐ。
+  const fieldKey = view.field.map((part) => part.id).join('|');
   useEffect(() => {
     gesture.current = null;
     setDraggingPartId(null);
-    setIsOverField(false);
+    setOverFieldId(null);
     setGhost(null);
-  }, [view.currentPlayerId, view.field?.id, canAct]);
-
-  const fieldDropActive = canAct && !!draggingPartId && isOverField;
+  }, [view.currentPlayerId, fieldKey, canAct]);
 
   return (
-    <main className="game-shell">
+    <main className={`game-shell${!isFinished && isMyTurn ? ' is-my-turn' : ''}`}>
       <header className="game-header">
         <div>
-          <p className="eyebrow">{isFinished ? 'ゲーム終了' : isMyTurn ? 'あなたの番' : '現在の手番'}</p>
+          <p className={`turn-badge${!isFinished && isMyTurn ? ' is-mine' : ''}`}>
+            {isFinished ? 'ゲーム終了' : isMyTurn ? '🟢 あなたの番です' : `${currentPlayer?.name ?? ''} の番`}
+          </p>
           <h1>{isFinished ? `${winner?.name ?? '勝者'} の勝ち` : currentPlayer?.name}</h1>
         </div>
         <button className="ghost-action" type="button" onClick={onRestart}>
@@ -179,7 +191,7 @@ export function GameScreen({
         ))}
       </section>
 
-      <section className={`table-area${fieldDropActive ? ' is-drop-target' : ''}`} aria-label="場">
+      <section className="table-area" aria-label="場">
         <FuseAnimation kanji={fusion} />
         <div className={`notice notice--${notice.kind}`}>{notice.text}</div>
 
@@ -188,12 +200,21 @@ export function GameScreen({
             <span>山札</span>
             <strong>{view.deckCount}</strong>
           </div>
-          <FieldCard
-            ref={fieldRef}
-            part={view.field}
-            active={fieldDropActive}
-            canDrop={canAct && !!draggedPart}
-          />
+          <div className="field-row" aria-label="場札">
+            {view.field.map((part) => (
+              <FieldCard
+                key={part.id}
+                ref={(el) => {
+                  if (el) fieldRefs.current.set(part.id, el);
+                  else fieldRefs.current.delete(part.id);
+                }}
+                part={part}
+                active={overFieldId === part.id && !!draggingPartId}
+                canDrop={canAct && !!draggedPart}
+              />
+            ))}
+            {view.field.length === 0 && <FieldCard part={null} />}
+          </div>
         </div>
 
         <div className="turn-actions">

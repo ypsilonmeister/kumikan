@@ -123,22 +123,20 @@ describe('net message serialization', () => {
 });
 
 describe('Inbox (handler 登録前の取りこぼし防止)', () => {
+  const publicState = {
+    phase: 'playing' as const,
+    players: [],
+    turnOrder: [],
+    currentPlayerId: null,
+    field: [],
+    hand: [],
+    deckCount: 0,
+    handSize: 6,
+    winnerId: null,
+  };
   const welcome: NetMessage = {
     type: 'WELCOME',
-    payload: {
-      playerId: 1,
-      state: {
-        phase: 'playing',
-        players: [],
-        turnOrder: [],
-        currentPlayerId: null,
-        field: null,
-        hand: [],
-        deckCount: 0,
-        handSize: 5,
-        winnerId: null,
-      },
-    },
+    payload: { playerId: 1, state: publicState },
   };
 
   it('flushes messages that arrived before a handler was registered', () => {
@@ -154,7 +152,7 @@ describe('Inbox (handler 登録前の取りこぼし防止)', () => {
 
   it('preserves arrival order across the handler boundary', () => {
     const inbox = new Inbox();
-    const a: NetMessage = { type: 'STATE_SYNC', payload: welcome.payload.state };
+    const a: NetMessage = { type: 'STATE_SYNC', payload: publicState };
     inbox.deliver(welcome); // 登録前
     const received: NetMessage[] = [];
     inbox.setHandler((msg) => received.push(msg));

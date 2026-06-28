@@ -20,7 +20,7 @@ const defaultNames = ['おとうさん', 'おかあさん', 'こども'];
 export function LobbyScreen({ notice, onStartLocal, onStartHost, onStartGuest }: LobbyScreenProps) {
   const [mode, setMode] = useState<LobbyMode>('local');
   const [playerCount, setPlayerCount] = useState(3);
-  const [handSize, setHandSize] = useState(5);
+  const [handSize, setHandSize] = useState(6);
   const [names, setNames] = useState(defaultNames);
   const [myName, setMyName] = useState('');
 

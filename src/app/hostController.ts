@@ -1,9 +1,4 @@
-import {
-  drawField,
-  nextTurn,
-  submitPart,
-  toPublicGameState,
-} from '../domain/engine';
+import { nextTurn, submitPart, toPublicGameState } from '../domain/engine';
 import type { GameState, Player } from '../domain/types';
 import type { Transport } from '../net/transport';
 import type { NetMessage } from '../net/messages';
@@ -67,8 +62,8 @@ export class HostController {
   }
 
   /** ホスト自身のパーツ提示。 */
-  submit(partId: string): void {
-    this.applySubmit(0, partId);
+  submit(partId: string, fieldPartId?: string): void {
+    this.applySubmit(0, partId, fieldPartId);
   }
 
   /** ホスト自身のパス。 */
@@ -78,8 +73,14 @@ export class HostController {
 
   private handleMessage(msg: NetMessage, from: number): void {
     switch (msg.type) {
+      case 'HELLO':
+        // 子機が接続を確立した。WELCOME を（再）送信して初期同期を保証する。
+        // open イベントの取りこぼしや順序ズレがあってもここで回復できる。
+        this.setPlayerConnected(from, true);
+        this.welcome(from);
+        break;
       case 'ACTION_SUBMIT':
-        this.applySubmit(from, msg.payload.partId);
+        this.applySubmit(from, msg.payload.partId, msg.payload.fieldPartId);
         break;
       case 'ACTION_PASS':
         this.applyPass(from);
@@ -101,13 +102,12 @@ export class HostController {
     this.broadcastState();
   }
 
-  private applySubmit(playerId: number, partId: string): void {
+  private applySubmit(playerId: number, partId: string, fieldPartId?: string): void {
     // 非手番プレイヤー / 場札なしの提示は無視（権威モデルを守る）。
-    if (this.currentPlayerId() !== playerId || !this.state.field) {
+    if (this.currentPlayerId() !== playerId || this.state.field.length === 0) {
       return;
     }
 
-    const field = this.state.field;
     const player = this.state.players.find((item) => item.id === playerId);
     const part = player?.hand.find((item) => item.id === partId);
 
@@ -116,9 +116,10 @@ export class HostController {
       return;
     }
 
-    const result = submitPart(this.state, playerId, partId);
+    const result = submitPart(this.state, playerId, partId, fieldPartId);
     if (result.outcome === 'success' && result.kanji) {
-      this.state = result.state.phase === 'finished' ? result.state : drawField(result.state);
+      // submitPart 内で補充済み。同じプレイヤーが続けて行動する。
+      this.state = result.state;
       this.callbacks.onFusion({
         playerId,
         char: result.kanji.char,
@@ -128,8 +129,8 @@ export class HostController {
         type: 'SUBMIT_RESULT',
         payload: {
           playerId,
-          field: field?.kind ?? '',
-          part: part?.kind ?? '',
+          field: result.kanji.from[0],
+          part: result.kanji.from[1],
           result: result.kanji.char,
         },
       });
@@ -137,7 +138,7 @@ export class HostController {
       return;
     }
 
-    // 失敗は手番交代。状態が変わらなくても次へ進める。
+    // 合体できないパーツを出した場合のみ手番交代。
     this.state = nextTurn(this.state);
     this.broadcastState();
   }

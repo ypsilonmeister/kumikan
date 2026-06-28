@@ -2,6 +2,9 @@ import { checkCombination } from './recipes';
 import { createDeck, dealPlayers, shuffle, type RandomFn } from './deck';
 import type { GameState, Kanji, Part, Player, PublicGameState } from './types';
 
+/** 場に並べる場札の最大枚数。 */
+export const FIELD_SIZE = 3;
+
 export interface SubmitResult {
   state: GameState;
   outcome: 'success' | 'fail';
@@ -45,36 +48,43 @@ export function startGame(players: Player[], handSize: number, random: RandomFn 
     turnOrder: dealt.players.map((player) => player.id),
     currentTurnIndex: 0,
     deck: dealt.deck,
-    field: null,
+    field: [],
     handSize,
     winnerId: null,
   };
 
-  return drawField(initialState);
+  return refillField(initialState);
 }
 
-export function drawField(state: GameState): GameState {
+/** 場札が FIELD_SIZE 未満なら山札から補充する。 */
+export function refillField(state: GameState): GameState {
   if (state.phase !== 'playing') {
     return state;
   }
 
-  const [field, ...deck] = state.deck;
-  if (!field) {
-    return checkGameEnd({
-      ...state,
-      field: null,
-    });
+  const field = [...state.field];
+  const deck = [...state.deck];
+  while (field.length < FIELD_SIZE && deck.length > 0) {
+    field.push(deck.shift() as Part);
   }
 
-  return checkGameEnd({
-    ...state,
-    deck,
-    field,
-  });
+  return checkGameEnd({ ...state, field, deck });
 }
 
-export function submitPart(state: GameState, playerId: number, partId: string): SubmitResult {
-  if (state.phase !== 'playing' || !state.field || currentPlayerId(state) !== playerId) {
+/** 後方互換のためのエイリアス（手番開始時の場札補充）。 */
+export const drawField = refillField;
+
+/**
+ * 手札のパーツを場札と合体させて提示する。
+ * fieldPartId 省略時は、合体できる最初の場札を自動で選ぶ（タップ操作向け）。
+ */
+export function submitPart(
+  state: GameState,
+  playerId: number,
+  handPartId: string,
+  fieldPartId?: string,
+): SubmitResult {
+  if (state.phase !== 'playing' || state.field.length === 0 || currentPlayerId(state) !== playerId) {
     return { state, outcome: 'fail' };
   }
 
@@ -84,31 +94,35 @@ export function submitPart(state: GameState, playerId: number, partId: string): 
     return { state, outcome: 'fail' };
   }
 
-  const partIndex = player.hand.findIndex((part) => part.id === partId);
-  const selectedPart = player.hand[partIndex];
-  if (!selectedPart) {
+  const handIndex = player.hand.findIndex((part) => part.id === handPartId);
+  const handPart = player.hand[handIndex];
+  if (!handPart) {
     return { state, outcome: 'fail' };
   }
 
-  const char = checkCombination(state.field.kind, selectedPart.kind);
+  // 合体相手の場札を決める。指定があればそれ、無ければ最初に成立するもの。
+  const fieldIndex = fieldPartId
+    ? state.field.findIndex((part) => part.id === fieldPartId)
+    : state.field.findIndex((part) => checkCombination(part.kind, handPart.kind));
+  const fieldPart = state.field[fieldIndex];
+  if (!fieldPart) {
+    return { state, outcome: 'fail' };
+  }
+
+  const char = checkCombination(fieldPart.kind, handPart.kind);
   if (!char) {
     return { state, outcome: 'fail' };
   }
 
-  const kanji: Kanji = {
-    char,
-    from: [state.field.kind, selectedPart.kind],
-  };
-
-  player.hand.splice(partIndex, 1);
+  const kanji: Kanji = { char, from: [fieldPart.kind, handPart.kind] };
+  player.hand.splice(handIndex, 1);
   player.score.push(kanji);
 
+  // 使った場札を取り除き、補充する（同じプレイヤーが続けて行動）。
+  const field = state.field.filter((part) => part.id !== fieldPart.id);
+
   return {
-    state: checkGameEnd({
-      ...state,
-      players,
-      field: null,
-    }),
+    state: refillField({ ...state, players, field }),
     outcome: 'success',
     kanji,
   };
@@ -120,10 +134,10 @@ export function nextTurn(state: GameState): GameState {
   }
 
   const nextIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
-  return drawField({
+  // 場札は持ち越し（毎ターン入れ替えない）。不足分だけ補充する。
+  return refillField({
     ...state,
     currentTurnIndex: nextIndex,
-    field: null,
   });
 }
 
@@ -137,8 +151,8 @@ export function checkGameEnd(state: GameState): GameState {
   }
 
   const hasEmptyHand = state.players.some((player) => player.hand.length === 0);
-  // 山札が尽きて場札も出せない状態は、手番が回らないため終了とする。
-  const deckExhausted = state.deck.length === 0 && !state.field;
+  // 山札が尽きて場札も無い（補充できない）状態は手番が回らないため終了。
+  const deckExhausted = state.deck.length === 0 && state.field.length === 0;
   if (!hasEmptyHand && !deckExhausted) {
     return state;
   }
@@ -171,10 +185,13 @@ export function toPublicGameState(state: GameState, viewerId: number): PublicGam
   };
 }
 
-export function findPlayablePart(field: Part | null, hand: Part[]): Part | null {
-  if (!field) {
+/** 手札の中で、いずれかの場札と合体できる最初のパーツを返す（ヒント用）。 */
+export function findPlayablePart(field: Part[], hand: Part[]): Part | null {
+  if (field.length === 0) {
     return null;
   }
-
-  return hand.find((part) => checkCombination(field.kind, part.kind)) ?? null;
+  return (
+    hand.find((part) => field.some((fieldPart) => checkCombination(fieldPart.kind, part.kind))) ??
+    null
+  );
 }

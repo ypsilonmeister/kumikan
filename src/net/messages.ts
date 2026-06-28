@@ -17,8 +17,9 @@ export type NetMessage =
     }
   | { type: 'GAME_OVER'; payload: { winnerId: number | null } }
   // Guest → Host
+  | { type: 'HELLO'; payload: Record<string, never> }
   | { type: 'JOIN'; payload: { name: string } }
-  | { type: 'ACTION_SUBMIT'; payload: { partId: string } }
+  | { type: 'ACTION_SUBMIT'; payload: { partId: string; fieldPartId?: string } }
   | { type: 'ACTION_PASS'; payload: Record<string, never> };
 
 export function serialize(msg: NetMessage): string {

@@ -52,7 +52,7 @@ function hostState(): GameState {
     turnOrder: [0, 1],
     currentTurnIndex: 0,
     deck: [makePart('日', 4)],
-    field: makePart('木', 5),
+    field: [makePart('木', 5)],
     handSize: 2,
     winnerId: null,
   };
@@ -97,7 +97,8 @@ describe('HostController', () => {
     const state = getState();
     expect(state?.currentTurnIndex).toBe(0);
     expect(state?.players[0].score).toHaveLength(1);
-    expect(state?.field?.kind).toBe('日'); // 山札から新規ドロー。
+    // 使った場札 木 は消費され、山札 日 が補充される。
+    expect(state?.field.map((p) => p.kind)).toEqual(['日']);
     expect(fusions).toHaveLength(1);
     expect(fusions[0].char).toBe('相');
     expect(transport.typesSent()).toContain('SUBMIT_RESULT');
@@ -122,5 +123,16 @@ describe('HostController', () => {
     const { transport, getState } = setup();
     transport.receive({ type: 'ACTION_PASS', payload: {} }, 1);
     expect(getState()).toBeNull();
+  });
+
+  it('replies to HELLO with a WELCOME (初期同期の保証)', () => {
+    const { transport } = setup();
+    transport.receive({ type: 'HELLO', payload: {} }, 1);
+
+    const welcome = transport.sent.find((e) => e.peerId === 1 && e.msg.type === 'WELCOME');
+    expect(welcome).toBeDefined();
+    if (welcome?.msg.type === 'WELCOME') {
+      expect(welcome.msg.payload.playerId).toBe(1);
+    }
   });
 });

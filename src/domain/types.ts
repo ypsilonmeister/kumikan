@@ -25,7 +25,8 @@ export interface GameState {
   turnOrder: number[];
   currentTurnIndex: number;
   deck: Part[];
-  field: Part | null;
+  /** 場に表向きで並ぶ場札（最大 FIELD_SIZE 枚）。 */
+  field: Part[];
   handSize: number;
   winnerId: number | null;
 }
@@ -44,7 +45,7 @@ export interface PublicGameState {
   players: PublicPlayer[];
   turnOrder: number[];
   currentPlayerId: number | null;
-  field: Part | null;
+  field: Part[];
   hand: Part[];
   deckCount: number;
   handSize: number;
