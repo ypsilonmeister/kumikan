@@ -1,5 +1,5 @@
 import type { Part, Player } from './types';
-import { partImageFile, partReading, recipeParts } from './recipes';
+import { partImageFile, partReading, pickRecipeParts } from './recipes';
 
 export type RandomFn = () => number;
 
@@ -16,8 +16,14 @@ export function makePart(kind: string, index: number): Part {
   };
 }
 
-export function createDeck(copies = 2): Part[] {
-  const kinds = Array.from({ length: copies }, () => recipeParts()).flat();
+/**
+ * 山札を作る。1 ゲーム分に抽選したレシピのパーツ列を copies 回ぶん並べる。
+ * 抽選は一度だけ行い、それを copies 回複製する（毎回別レシピにしない）。
+ * 抽選により山札サイズを適量に保ち、組み合わせが成立しやすくする。
+ */
+export function createDeck(copies = 2, random: RandomFn = Math.random): Part[] {
+  const picked = pickRecipeParts(undefined, random);
+  const kinds = Array.from({ length: copies }, () => picked).flat();
   return kinds.map((kind, index) => makePart(kind, index));
 }
 

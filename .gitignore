@@ -1,5 +1,10 @@
 node_modules/
 dist/
+
+# Gemini 辞書生成の中間生成物（再生成可能・サイズ大のため追跡しない）
+scripts/ids.txt
+scripts/recipes_suggested.json
+scripts/cannot_decompose.json
 *.tsbuildinfo
 *.log
 vite.config.js

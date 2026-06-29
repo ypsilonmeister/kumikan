@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDeck, makePart } from '../domain/deck';
-import { checkCombination, KANJI_RECIPES, recipeKey } from '../domain/recipes';
+import { checkCombination, KANJI_RECIPES, recipeKey, RECIPES_PER_GAME } from '../domain/recipes';
 import { FIELD_SIZE, checkGameEnd, nextTurn, passTurn, refillField, submitPart } from '../domain/engine';
 import type { GameState } from '../domain/types';
 
@@ -50,7 +50,7 @@ describe('recipes', () => {
   });
 
   it('includes the expanded kanji part set', () => {
-    expect(Object.keys(KANJI_RECIPES)).toHaveLength(85);
+    expect(Object.keys(KANJI_RECIPES)).toHaveLength(298);
     expect(checkCombination('さんずい', '青')).toBe('清');
     expect(checkCombination('忄', '生')).toBe('性');
     expect(checkCombination('門', '耳')).toBe('聞');
@@ -59,11 +59,16 @@ describe('recipes', () => {
     expect(checkCombination('辶', '車')).toBe('連');
     expect(checkCombination('囗', '玉')).toBe('国');
     expect(checkCombination('囗', '木')).toBe('困');
+    // Gemini データから追加した教育漢字レシピの例。
+    expect(checkCombination('言', '舌')).toBe('話');
+    expect(checkCombination('木', '林')).toBe('森');
+    expect(checkCombination('立', '日')).toBe('音');
   });
 
-  it('builds the deck from every recipe part occurrence', () => {
+  it('builds the deck from a per-game recipe subset (適量の山札)', () => {
     const copies = 2;
-    expect(createDeck(copies)).toHaveLength(Object.keys(KANJI_RECIPES).length * 2 * copies);
+    // 抽選した RECIPES_PER_GAME 件ぶんのパーツ × copies。
+    expect(createDeck(copies)).toHaveLength(RECIPES_PER_GAME * 2 * copies);
   });
 
   it('labels radical parts with their reading (しんにょう など)', () => {

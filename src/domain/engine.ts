@@ -40,7 +40,7 @@ function winnerByScore(players: Player[]): number | null {
 }
 
 export function startGame(players: Player[], handSize: number, random: RandomFn = Math.random): GameState {
-  const deck = shuffle(createDeck(), random);
+  const deck = shuffle(createDeck(2, random), random);
   const dealt = dealPlayers(players, deck, handSize);
   const initialState: GameState = {
     phase: 'playing',
