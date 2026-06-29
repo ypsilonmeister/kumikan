@@ -70,6 +70,7 @@ describe('recipes', () => {
     const shinnyou = makePart('辶', 0);
     expect(shinnyou.label).toBe('しんにょう');
     expect(shinnyou.reading).toBe('しんにょう');
+    expect(shinnyou.image).toBe('shinnyou.svg'); // 部首は画像表示
     expect(shinnyou.kind).toBe('辶'); // 照合キーは部首のまま
 
     // 単体で読める漢字パーツはグリフのまま。

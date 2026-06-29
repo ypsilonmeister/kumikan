@@ -125,4 +125,22 @@ export function partReading(kind: string): string | null {
   return PART_READINGS[kind] ?? null;
 }
 
+/**
+ * 単体では字形が崩れやすい部首の画像（public/parts/ 配下のファイル名）。
+ * 表示時に画像を優先することで、フォント依存の見え方の差をなくす。
+ */
+const PART_IMAGES: Record<string, string> = {
+  '辶': 'shinnyou.svg',
+  '亻': 'ninben.svg',
+  '忄': 'risshinben.svg',
+  '囗': 'kunigamae.svg',
+  '艹': 'kusakanmuri.svg',
+  '禾': 'nogihen.svg',
+};
+
+/** 部首の画像ファイル名があれば返す（無ければ null）。 */
+export function partImageFile(kind: string): string | null {
+  return PART_IMAGES[kind] ?? null;
+}
+
 

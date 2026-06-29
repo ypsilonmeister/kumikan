@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import type { Part } from '../../domain/types';
+import { partImageUrl } from '../partImage';
 
 interface FieldCardProps {
   part: Part | null;
@@ -20,7 +21,11 @@ export const FieldCard = forwardRef<HTMLDivElement, FieldCardProps>(function Fie
       aria-live="polite"
     >
       {part ? (
-        <strong className={[...part.label].length > 1 ? 'is-word' : ''}>{part.label}</strong>
+        part.image ? (
+          <img className="field-card__img" src={partImageUrl(part.image)} alt={part.label} draggable={false} />
+        ) : (
+          <strong className={[...part.label].length > 1 ? 'is-word' : ''}>{part.label}</strong>
+        )
       ) : (
         <span className="field-card__empty">場札なし</span>
       )}

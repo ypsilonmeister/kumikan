@@ -394,6 +394,15 @@ select {
   letter-spacing: -0.02em;
 }
 
+/* 部首画像はカード内に収める。 */
+.kanji-card__img,
+.field-card__img {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .field-card strong.is-word {
   font-size: 0.95rem;
   line-height: 1.2;

@@ -4,6 +4,8 @@ export interface Part {
   label: string;
   /** 部首など、読みが分かりにくいパーツの「よみ」（任意）。表示で併記する。 */
   reading?: string;
+  /** 部首画像のファイル名（public/parts/ 配下）。あれば文字でなく画像で表示。 */
+  image?: string;
 }
 
 export interface Kanji {

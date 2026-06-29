@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",
-    "gen-icons": "node scripts/gen-icons.mjs"
+    "gen-icons": "node scripts/gen-icons.mjs",
+    "gen-part-svgs": "node scripts/gen-part-svgs.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

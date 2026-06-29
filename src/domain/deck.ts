@@ -1,16 +1,18 @@
 import type { Part, Player } from './types';
-import { partReading, recipeParts } from './recipes';
+import { partImageFile, partReading, recipeParts } from './recipes';
 
 export type RandomFn = () => number;
 
 export function makePart(kind: string, index: number): Part {
   const reading = partReading(kind) ?? undefined;
+  const image = partImageFile(kind) ?? undefined;
   return {
     id: `part_${index}_${kind}`,
     kind,
     // 読みのある部首は、形が紛らわしいグリフではなく読みを主表示にする。
     label: reading ?? kind,
     reading,
+    image,
   };
 }
 

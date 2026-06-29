@@ -1,5 +1,6 @@
 import type { PointerEvent } from 'react';
 import type { Part } from '../../domain/types';
+import { partImageUrl } from '../partImage';
 
 interface CardProps {
   part: Part;
@@ -23,7 +24,11 @@ export function Card({ part, selected = false, disabled = false, dragging = fals
       onPointerDown={(event) => onPointerDown?.(part, event)}
       aria-label={`${part.label} のカード`}
     >
-      <span className={isWord ? 'is-word' : ''}>{part.label}</span>
+      {part.image ? (
+        <img className="kanji-card__img" src={partImageUrl(part.image)} alt={part.label} draggable={false} />
+      ) : (
+        <span className={isWord ? 'is-word' : ''}>{part.label}</span>
+      )}
     </button>
   );
 }
