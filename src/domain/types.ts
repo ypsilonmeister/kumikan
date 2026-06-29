@@ -2,6 +2,8 @@ export interface Part {
   id: string;
   kind: string;
   label: string;
+  /** 部首など、読みが分かりにくいパーツの「よみ」（任意）。表示で併記する。 */
+  reading?: string;
 }
 
 export interface Kanji {

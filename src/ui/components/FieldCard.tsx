@@ -20,7 +20,7 @@ export const FieldCard = forwardRef<HTMLDivElement, FieldCardProps>(function Fie
       aria-live="polite"
     >
       {part ? (
-        <strong>{part.label}</strong>
+        <strong className={[...part.label].length > 1 ? 'is-word' : ''}>{part.label}</strong>
       ) : (
         <span className="field-card__empty">場札なし</span>
       )}

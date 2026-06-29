@@ -11,6 +11,8 @@ interface CardProps {
 }
 
 export function Card({ part, selected = false, disabled = false, dragging = false, onPointerDown }: CardProps) {
+  // 1 文字（漢字グリフ）は大きく、複数文字（よみ）は小さく表示する。
+  const isWord = [...part.label].length > 1;
   return (
     <button
       className={`kanji-card${selected ? ' is-selected' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -21,7 +23,7 @@ export function Card({ part, selected = false, disabled = false, dragging = fals
       onPointerDown={(event) => onPointerDown?.(part, event)}
       aria-label={`${part.label} のカード`}
     >
-      <span>{part.label}</span>
+      <span className={isWord ? 'is-word' : ''}>{part.label}</span>
     </button>
   );
 }

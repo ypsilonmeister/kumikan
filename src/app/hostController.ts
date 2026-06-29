@@ -1,4 +1,4 @@
-import { nextTurn, submitPart, toPublicGameState } from '../domain/engine';
+import { nextTurn, passTurn, submitPart, toPublicGameState } from '../domain/engine';
 import type { GameState, Player } from '../domain/types';
 import type { Transport } from '../net/transport';
 import type { NetMessage } from '../net/messages';
@@ -147,7 +147,8 @@ export class HostController {
     if (this.currentPlayerId() !== playerId) {
       return;
     }
-    this.state = nextTurn(this.state);
+    // パスは場札を引き直す（手詰まり解消）。
+    this.state = passTurn(this.state);
     this.broadcastState();
   }
 

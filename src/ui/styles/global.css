@@ -387,6 +387,21 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* 部首のよみ（複数文字）は小さく折り返して表示。 */
+.kanji-card span.is-word {
+  font-size: 0.92rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.field-card strong.is-word {
+  font-size: 0.95rem;
+  line-height: 1.2;
+  padding: 0 4px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .fusion {
   position: absolute;
   inset: 0;
@@ -405,12 +420,20 @@ select {
   place-items: center;
   width: 92px;
   height: 112px;
+  padding: 0 4px;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 16px 36px rgba(24, 33, 31, 0.16);
   font-size: 3.8rem;
   font-weight: 900;
-  line-height: 1;
+  line-height: 1.05;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* パーツのよみが複数文字でもはみ出さないよう、長い語は縮める。 */
+.fusion__part.is-word {
+  font-size: 1.2rem;
 }
 
 .fusion__part:first-child {

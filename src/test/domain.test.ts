@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDeck, makePart } from '../domain/deck';
 import { checkCombination, KANJI_RECIPES, recipeKey } from '../domain/recipes';
-import { FIELD_SIZE, checkGameEnd, nextTurn, refillField, submitPart } from '../domain/engine';
+import { FIELD_SIZE, checkGameEnd, nextTurn, passTurn, refillField, submitPart } from '../domain/engine';
 import type { GameState } from '../domain/types';
 
 function baseState(): GameState {
@@ -65,6 +65,18 @@ describe('recipes', () => {
     const copies = 2;
     expect(createDeck(copies)).toHaveLength(Object.keys(KANJI_RECIPES).length * 2 * copies);
   });
+
+  it('labels radical parts with their reading (しんにょう など)', () => {
+    const shinnyou = makePart('辶', 0);
+    expect(shinnyou.label).toBe('しんにょう');
+    expect(shinnyou.reading).toBe('しんにょう');
+    expect(shinnyou.kind).toBe('辶'); // 照合キーは部首のまま
+
+    // 単体で読める漢字パーツはグリフのまま。
+    const ki = makePart('木', 1);
+    expect(ki.label).toBe('木');
+    expect(ki.reading).toBeUndefined();
+  });
 });
 
 describe('engine', () => {
@@ -125,6 +137,33 @@ describe('engine', () => {
     });
 
     expect(updated.phase).toBe('playing');
+  });
+
+  it('recycles the field into the deck on pass (手詰まり解消)', () => {
+    const state: GameState = {
+      ...baseState(),
+      field: [makePart('木', 20), makePart('火', 21)],
+      deck: [makePart('日', 22), makePart('月', 23), makePart('女', 24)],
+    };
+    const passed = passTurn(state);
+
+    // 手番が進み、場札は新しい 3 枚に入れ替わる。
+    expect(passed.currentTurnIndex).toBe(1);
+    expect(passed.field).toHaveLength(FIELD_SIZE);
+    // 元の場札（木・火）は山札の底に戻り、新しい場札には出ていない。
+    expect(passed.field.map((p) => p.kind)).toEqual(['日', '月', '女']);
+    // 全カードは保存される（場2 + 山3 = 5）。
+    expect(passed.field.length + passed.deck.length).toBe(5);
+  });
+
+  it('does not lose cards on pass when the deck is empty', () => {
+    const state: GameState = {
+      ...baseState(),
+      field: [makePart('木', 30)],
+      deck: [],
+    };
+    const passed = passTurn(state);
+    expect(passed.field.map((p) => p.kind)).toEqual(['木']); // 入れ替えなし
   });
 
   it('refills the field up to FIELD_SIZE from the deck', () => {

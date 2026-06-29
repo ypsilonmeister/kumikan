@@ -141,8 +141,31 @@ export function nextTurn(state: GameState): GameState {
   });
 }
 
+/**
+ * パス。手番を次へ進めつつ、**今の場札を山札の底に戻して引き直す**。
+ * これにより「場札がどの手札とも合わない手詰まり」を解消し、
+ * 全員パスし続けてゲームが終わる事故を防ぐ。山札が空なら入れ替えはしない。
+ */
 export function passTurn(state: GameState): GameState {
-  return nextTurn(state);
+  if (state.phase !== 'playing') {
+    return state;
+  }
+
+  const nextIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
+
+  // 山札が無ければ入れ替えできないので通常の手番送りのみ。
+  if (state.deck.length === 0) {
+    return refillField({ ...state, currentTurnIndex: nextIndex });
+  }
+
+  // 今の場札を山札の底へ戻し、新しい場札を引き直す。
+  const recycledDeck = [...state.deck, ...state.field];
+  return refillField({
+    ...state,
+    currentTurnIndex: nextIndex,
+    field: [],
+    deck: recycledDeck,
+  });
 }
 
 export function checkGameEnd(state: GameState): GameState {

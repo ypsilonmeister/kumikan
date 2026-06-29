@@ -105,4 +105,24 @@ export function recipeParts(): string[] {
   return Object.keys(KANJI_RECIPES).flatMap((key) => key.split(','));
 }
 
+/**
+ * 単体では読みが分かりにくい部首の「よみ」。
+ * カード表示でグリフと併記して、子どもでも識別できるようにする。
+ * （しんにょう等は font により形が変わって見えるため、よみで明示する）
+ */
+export const PART_READINGS: Record<string, string> = {
+  '辶': 'しんにょう',
+  '亻': 'にんべん',
+  '忄': 'りっしんべん',
+  '囗': 'くにがまえ',
+  '艹': 'くさかんむり',
+  '禾': 'のぎへん',
+  'さんずい': 'さんずい',
+};
+
+/** 部首によみがあれば返す（無ければ null）。 */
+export function partReading(kind: string): string | null {
+  return PART_READINGS[kind] ?? null;
+}
+
 
