@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDeck, makePart } from '../domain/deck';
 import { checkCombination, KANJI_RECIPES, recipeKey, RECIPES_PER_GAME } from '../domain/recipes';
-import { FIELD_SIZE, checkGameEnd, nextTurn, passTurn, refillField, submitPart } from '../domain/engine';
+import { FIELD_SIZE, checkGameEnd, passTurn, refillField, submitPart } from '../domain/engine';
 import type { GameState } from '../domain/types';
 
 function baseState(): GameState {
@@ -122,16 +122,6 @@ describe('engine', () => {
 
     expect(result.outcome).toBe('fail');
     expect(result.state).toBe(state);
-  });
-
-  it('advances the turn and keeps the field across turns', () => {
-    const state = baseState(); // field=[木], deck=[日]
-    const advanced = nextTurn(state);
-
-    expect(advanced.currentTurnIndex).toBe(1);
-    // 場札は持ち越し、不足分のみ補充（木 + 日 で 2 枚に）。
-    expect(advanced.field.map((p) => p.kind).sort()).toEqual(['日', '木']);
-    expect(advanced.deck).toHaveLength(0);
   });
 
   it('keeps playing when the deck is empty but field cards remain', () => {

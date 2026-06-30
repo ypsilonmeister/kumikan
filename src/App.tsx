@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPlayers } from './domain/deck';
 import {
-  drawField,
   findPlayablePart,
-  nextTurn,
   passTurn,
   startGame,
   submitPart,
@@ -134,11 +132,14 @@ export default function App() {
       });
       return;
     }
-    const updated = result.state.phase === 'finished' ? result.state : nextTurn(result.state);
+    // 失敗もパスと同様に場札を1枚増やして手番交代。
+    const updated = result.state.phase === 'finished' ? result.state : passTurn(result.state);
     setLocalGame(updated);
+    // 山札が空のときは場札が増えないので、増えた場合だけその旨を添える。
+    const grew = updated.field.length > result.state.field.length;
     setNotice({
       kind: 'fail',
-      text: `${currentName} の組み合わせは成立しませんでした。次の番です。`,
+      text: `${currentName} の組み合わせは成立しませんでした。${grew ? '場札が1枚増えて' : ''}次の番です。`,
       scopeKey: scopeKeyForState(updated),
     });
   }

@@ -71,9 +71,6 @@ export function refillField(state: GameState): GameState {
   return checkGameEnd({ ...state, field, deck });
 }
 
-/** 後方互換のためのエイリアス（手番開始時の場札補充）。 */
-export const drawField = refillField;
-
 /**
  * 手札のパーツを場札と合体させて提示する。
  * fieldPartId 省略時は、合体できる最初の場札を自動で選ぶ（タップ操作向け）。
@@ -128,23 +125,11 @@ export function submitPart(
   };
 }
 
-export function nextTurn(state: GameState): GameState {
-  if (state.phase !== 'playing') {
-    return state;
-  }
-
-  const nextIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
-  // 場札は持ち越し（毎ターン入れ替えない）。不足分だけ補充する。
-  return refillField({
-    ...state,
-    currentTurnIndex: nextIndex,
-  });
-}
-
 /**
- * パス。手番を次へ進めつつ、**場札を山札から1枚増やす**（入れ替えではなく追加）。
- * パスのたびに合体候補が積み上がるので、場札がどの手札とも合わずに
- * 全員がパスし続ける事故を防ぐ。山札が空なら追加せず手番送りのみ。
+ * 手番を次のプレイヤーへ進めつつ、**場札を山札から1枚増やす**（入れ替えではなく追加）。
+ * 自発的なパスでも、合体に失敗した提出でも呼ぶ。点を取れずに手番が移るたびに
+ * 合体候補が積み上がるので、場札がどの手札とも合わずに全員が手詰まる事故を防ぐ。
+ * 山札が空なら追加せず手番送りのみ。
  */
 export function passTurn(state: GameState): GameState {
   if (state.phase !== 'playing') {

@@ -1,4 +1,4 @@
-import { nextTurn, passTurn, submitPart, toPublicGameState } from '../domain/engine';
+import { passTurn, submitPart, toPublicGameState } from '../domain/engine';
 import type { GameState, Player } from '../domain/types';
 import type { Transport } from '../net/transport';
 import type { NetMessage } from '../net/messages';
@@ -138,8 +138,8 @@ export class HostController {
       return;
     }
 
-    // 合体できないパーツを出した場合のみ手番交代。
-    this.state = nextTurn(this.state);
+    // 合体できないパーツを出したら手番交代。パスと同じく場札を1枚積み増す。
+    this.state = passTurn(this.state);
     this.broadcastState();
   }
 
