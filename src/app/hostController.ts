@@ -147,7 +147,7 @@ export class HostController {
     if (this.currentPlayerId() !== playerId) {
       return;
     }
-    // パスは場札を引き直す（手詰まり解消）。
+    // パスは場札を山札から1枚積み増す（合体候補を増やして手詰まり解消）。
     this.state = passTurn(this.state);
     this.broadcastState();
   }

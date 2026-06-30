@@ -57,6 +57,23 @@ export function GameScreen({
     [draggingPartId, view.hand],
   );
 
+  // 同じ種類の場札はひとまとめに（先頭カードを代表に、枚数だけ持つ）。
+  // パスで場札が増えても見た目が散らからないよう重ね表示する。
+  const fieldGroups = useMemo(() => {
+    const groups: { id: string; rep: Part; count: number }[] = [];
+    const indexByKind = new Map<string, number>();
+    for (const part of view.field) {
+      const at = indexByKind.get(part.kind);
+      if (at === undefined) {
+        indexByKind.set(part.kind, groups.length);
+        groups.push({ id: part.id, rep: part, count: 1 });
+      } else {
+        groups[at].count += 1;
+      }
+    }
+    return groups;
+  }, [view.field]);
+
   // 進行中のポインタジェスチャ。再レンダーに影響されないよう ref で持つ。
   const gesture = useRef<{
     pointerId: number;
@@ -201,15 +218,16 @@ export function GameScreen({
             <strong>{view.deckCount}</strong>
           </div>
           <div className="field-row" aria-label="場札">
-            {view.field.map((part) => (
+            {fieldGroups.map((group) => (
               <FieldCard
-                key={part.id}
+                key={group.id}
                 ref={(el) => {
-                  if (el) fieldRefs.current.set(part.id, el);
-                  else fieldRefs.current.delete(part.id);
+                  if (el) fieldRefs.current.set(group.id, el);
+                  else fieldRefs.current.delete(group.id);
                 }}
-                part={part}
-                active={overFieldId === part.id && !!draggingPartId}
+                part={group.rep}
+                count={group.count}
+                active={overFieldId === group.id && !!draggingPartId}
                 canDrop={canAct && !!draggedPart}
               />
             ))}

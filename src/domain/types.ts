@@ -29,7 +29,10 @@ export interface GameState {
   turnOrder: number[];
   currentTurnIndex: number;
   deck: Part[];
-  /** 場に表向きで並ぶ場札（最大 FIELD_SIZE 枚）。 */
+  /**
+   * 場に表向きで並ぶ場札。通常は FIELD_SIZE 枚に補充されるが、
+   * パスのたびに山札から1枚ずつ積み増されるため上限を超えて増えることがある。
+   */
   field: Part[];
   handSize: number;
   winnerId: number | null;

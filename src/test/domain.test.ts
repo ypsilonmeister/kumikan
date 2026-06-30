@@ -145,7 +145,7 @@ describe('engine', () => {
     expect(updated.phase).toBe('playing');
   });
 
-  it('recycles the field into the deck on pass (手詰まり解消)', () => {
+  it('adds a field card on pass instead of replacing it (パスで場札が増える)', () => {
     const state: GameState = {
       ...baseState(),
       field: [makePart('木', 20), makePart('火', 21)],
@@ -153,23 +153,23 @@ describe('engine', () => {
     };
     const passed = passTurn(state);
 
-    // 手番が進み、場札は新しい 3 枚に入れ替わる。
+    // 手番が進み、既存の場札はそのまま、山札から1枚（日）が積み上がる。
     expect(passed.currentTurnIndex).toBe(1);
-    expect(passed.field).toHaveLength(FIELD_SIZE);
-    // 元の場札（木・火）は山札の底に戻り、新しい場札には出ていない。
-    expect(passed.field.map((p) => p.kind)).toEqual(['日', '月', '女']);
+    expect(passed.field.map((p) => p.kind)).toEqual(['木', '火', '日']);
+    expect(passed.deck.map((p) => p.kind)).toEqual(['月', '女']);
     // 全カードは保存される（場2 + 山3 = 5）。
     expect(passed.field.length + passed.deck.length).toBe(5);
   });
 
-  it('does not lose cards on pass when the deck is empty', () => {
+  it('does not change the field on pass when the deck is empty', () => {
     const state: GameState = {
       ...baseState(),
       field: [makePart('木', 30)],
       deck: [],
     };
     const passed = passTurn(state);
-    expect(passed.field.map((p) => p.kind)).toEqual(['木']); // 入れ替えなし
+    expect(passed.field.map((p) => p.kind)).toEqual(['木']); // 追加なし
+    expect(passed.currentTurnIndex).toBe(1); // 手番だけ進む
   });
 
   it('refills the field up to FIELD_SIZE from the deck', () => {
@@ -181,6 +181,36 @@ describe('engine', () => {
     const filled = refillField(state);
     expect(filled.field).toHaveLength(FIELD_SIZE); // 3 枚補充
     expect(filled.deck).toHaveLength(1); // 残り 1 枚
+  });
+
+  it('finishes when the deck is empty and nobody can combine with the field (詰み)', () => {
+    const state: GameState = {
+      ...baseState(),
+      deck: [],
+      // 火 同士はどのレシピでも成立しない → 全員が場札と合体できない詰み。
+      field: [makePart('火', 40)],
+      players: [
+        { id: 0, name: 'A', hand: [makePart('火', 41)], score: [], connected: true },
+        { id: 1, name: 'B', hand: [makePart('火', 42)], score: [], connected: true },
+      ],
+    };
+    const finished = checkGameEnd(state);
+    expect(finished.phase).toBe('finished');
+  });
+
+  it('keeps playing when the deck is empty but someone can still combine', () => {
+    const state: GameState = {
+      ...baseState(),
+      deck: [],
+      field: [makePart('木', 50)],
+      players: [
+        { id: 0, name: 'A', hand: [makePart('火', 51)], score: [], connected: true },
+        // B は 木+目=相 が出せるのでまだ詰みではない。
+        { id: 1, name: 'B', hand: [makePart('目', 52)], score: [], connected: true },
+      ],
+    };
+    const updated = checkGameEnd(state);
+    expect(updated.phase).toBe('playing');
   });
 
   it('finishes when the deck is exhausted and the field is empty', () => {

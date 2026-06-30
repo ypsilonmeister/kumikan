@@ -2,7 +2,7 @@ import { checkCombination } from './recipes';
 import { createDeck, dealPlayers, shuffle, type RandomFn } from './deck';
 import type { GameState, Kanji, Part, Player, PublicGameState } from './types';
 
-/** 場に並べる場札の最大枚数。 */
+/** 場札の通常補充枚数。パス時はこれを超えて積み増される（上限ではない）。 */
 export const FIELD_SIZE = 3;
 
 export interface SubmitResult {
@@ -142,9 +142,9 @@ export function nextTurn(state: GameState): GameState {
 }
 
 /**
- * パス。手番を次へ進めつつ、**今の場札を山札の底に戻して引き直す**。
- * これにより「場札がどの手札とも合わない手詰まり」を解消し、
- * 全員パスし続けてゲームが終わる事故を防ぐ。山札が空なら入れ替えはしない。
+ * パス。手番を次へ進めつつ、**場札を山札から1枚増やす**（入れ替えではなく追加）。
+ * パスのたびに合体候補が積み上がるので、場札がどの手札とも合わずに
+ * 全員がパスし続ける事故を防ぐ。山札が空なら追加せず手番送りのみ。
  */
 export function passTurn(state: GameState): GameState {
   if (state.phase !== 'playing') {
@@ -153,19 +153,15 @@ export function passTurn(state: GameState): GameState {
 
   const nextIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
 
-  // 山札が無ければ入れ替えできないので通常の手番送りのみ。
+  // 山札が無ければ追加できないので通常の手番送りのみ。
   if (state.deck.length === 0) {
-    return refillField({ ...state, currentTurnIndex: nextIndex });
+    return checkGameEnd({ ...state, currentTurnIndex: nextIndex });
   }
 
-  // 今の場札を山札の底へ戻し、新しい場札を引き直す。
-  const recycledDeck = [...state.deck, ...state.field];
-  return refillField({
-    ...state,
-    currentTurnIndex: nextIndex,
-    field: [],
-    deck: recycledDeck,
-  });
+  // 既存の場札はそのまま残し、山札から1枚だけ場に足す。
+  const deck = [...state.deck];
+  const field = [...state.field, deck.shift() as Part];
+  return checkGameEnd({ ...state, currentTurnIndex: nextIndex, field, deck });
 }
 
 export function checkGameEnd(state: GameState): GameState {
@@ -176,7 +172,13 @@ export function checkGameEnd(state: GameState): GameState {
   const hasEmptyHand = state.players.some((player) => player.hand.length === 0);
   // 山札が尽きて場札も無い（補充できない）状態は手番が回らないため終了。
   const deckExhausted = state.deck.length === 0 && state.field.length === 0;
-  if (!hasEmptyHand && !deckExhausted) {
+  // 山札が尽き、誰の手札も場札と合体できない詰み状態。
+  // 新仕様ではパスで場札が増えるだけなので、これを終了にしないと
+  // 「パスしても不成立提出しても盤面が変わらない」無限ループになる。
+  const deadlocked =
+    state.deck.length === 0 &&
+    !state.players.some((player) => findPlayablePart(state.field, player.hand) !== null);
+  if (!hasEmptyHand && !deckExhausted && !deadlocked) {
     return state;
   }
 

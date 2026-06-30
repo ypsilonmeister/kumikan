@@ -310,6 +310,7 @@ select {
 }
 
 .field-card {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100px;
@@ -318,6 +319,32 @@ select {
   border-radius: 8px;
   background: #fffdfa;
   box-shadow: 0 10px 22px rgba(36, 63, 58, 0.16);
+}
+
+/* 同種が重なっている場札は、後ろにもう1枚控えている見た目にする。 */
+.field-card.is-stacked {
+  box-shadow:
+    6px 6px 0 -2px #fffdfa,
+    6px 6px 0 0 #243f3a,
+    0 10px 22px rgba(36, 63, 58, 0.16);
+}
+
+.field-card__count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #1f6f5b;
+  color: #fffdfa;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(31, 111, 91, 0.35);
 }
 
 .field-card strong {
