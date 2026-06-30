@@ -19,6 +19,9 @@ interface GameScreenProps {
   onPass: () => void;
   onHint: () => void;
   onRestart: () => void;
+  /** 効果音がミュート中か。 */
+  muted: boolean;
+  onToggleMute: () => void;
 }
 
 /** タップとドラッグを分ける移動量しきい値（px）。 */
@@ -39,6 +42,8 @@ export function GameScreen({
   onPass,
   onHint,
   onRestart,
+  muted,
+  onToggleMute,
 }: GameScreenProps) {
   const [draggingPartId, setDraggingPartId] = useState<string | null>(null);
   const [overFieldId, setOverFieldId] = useState<string | null>(null);
@@ -179,9 +184,20 @@ export function GameScreen({
           </p>
           <h1>{isFinished ? `${winner?.name ?? '勝者'} の勝ち` : currentPlayer?.name}</h1>
         </div>
-        <button className="ghost-action" type="button" onClick={onRestart}>
-          終了する
-        </button>
+        <div className="header-actions">
+          <button
+            className="ghost-action icon-action"
+            type="button"
+            onClick={onToggleMute}
+            aria-pressed={muted}
+            title={muted ? '音を出す' : '音を消す'}
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
+          <button className="ghost-action" type="button" onClick={onRestart}>
+            終了する
+          </button>
+        </div>
       </header>
 
       <section className="score-row" aria-label="得点">

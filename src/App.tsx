@@ -11,6 +11,7 @@ import type { GameState, Kanji, Part, PublicGameState } from './domain/types';
 import { GuestController } from './app/guestController';
 import { HostController, type FusionEvent } from './app/hostController';
 import { Hub } from './net/hub';
+import * as sfx from './audio/sfx';
 import type { RtcConnection } from './net/rtcConnection';
 import { ConnectScreen, type ConnectRole } from './ui/screens/ConnectScreen';
 import { GameScreen } from './ui/screens/GameScreen';
@@ -67,6 +68,9 @@ export default function App() {
   const [view, setView] = useState<PublicGameState | null>(null);
   const [viewerId, setViewerId] = useState(0);
 
+  // 効果音のミュート状態（localStorage に永続化）。
+  const [muted, setMutedState] = useState(sfx.isMuted());
+
   const hostRef = useRef<HostController | null>(null);
   const hubRef = useRef<Hub | null>(null);
   const guestRef = useRef<GuestController | null>(null);
@@ -74,6 +78,9 @@ export default function App() {
   const handSizeRef = useRef(6);
   const hostNameRef = useRef('ホスト');
   const guestNameRef = useRef('ゲスト');
+  // 効果音: 前回の局面と手番を覚えておき、変化したときだけ鳴らす。
+  const prevPhaseRef = useRef<string | null>(null);
+  const prevCurrentRef = useRef<number | null>(null);
 
   const localCurrentId = localGame?.turnOrder[localGame.currentTurnIndex] ?? 0;
 
@@ -89,6 +96,44 @@ export default function App() {
     const timeout = window.setTimeout(() => setFusion(null), 900);
     return () => window.clearTimeout(timeout);
   }, [fusion]);
+
+  // 最初のユーザー操作で AudioContext を起こす（自動再生ポリシー対策）。
+  useEffect(() => {
+    const prime = () => sfx.primeAudio();
+    window.addEventListener('pointerdown', prime, { once: true });
+    return () => window.removeEventListener('pointerdown', prime);
+  }, []);
+
+  // 合体成功・漢字完成（fusion 出現）。勝敗確定の手はファンファーレ側に任せる。
+  useEffect(() => {
+    if (fusion && gameView?.phase !== 'finished') {
+      sfx.playSuccess();
+    }
+  }, [fusion, gameView?.phase]);
+
+  // ゲーム終了（勝利ファンファーレ）。finished へ遷移した瞬間だけ。
+  useEffect(() => {
+    const phase = gameView?.phase ?? null;
+    if (phase === 'finished' && prevPhaseRef.current && prevPhaseRef.current !== 'finished') {
+      sfx.playWin();
+    }
+    prevPhaseRef.current = phase;
+  }, [gameView?.phase]);
+
+  // 自分の手番が回ってきた通知（オンライン時のみ。ローカルは同一端末交代なので鳴らさない）。
+  useEffect(() => {
+    const current = gameView?.currentPlayerId ?? null;
+    if (
+      modeRef.current !== 'local' &&
+      current !== null &&
+      current === viewerId &&
+      prevCurrentRef.current !== null &&
+      prevCurrentRef.current !== current
+    ) {
+      sfx.playTurn();
+    }
+    prevCurrentRef.current = current;
+  }, [gameView?.currentPlayerId, viewerId]);
 
   useEffect(() => {
     if (!notice.scopeKey || !gameView) {
@@ -133,6 +178,7 @@ export default function App() {
       return;
     }
     // 失敗もパスと同様に場札を1枚増やして手番交代。
+    sfx.playFail();
     const updated = result.state.phase === 'finished' ? result.state : passTurn(result.state);
     setLocalGame(updated);
     // 山札が空のときは場札が増えないので、増えた場合だけその旨を添える。
@@ -236,9 +282,15 @@ export default function App() {
   }
 
   function onPass() {
+    // パスはユーザー操作起点なので、全モードでこの場で鳴らす。
+    sfx.playPass();
     if (modeRef.current === 'local') localPass();
     else if (modeRef.current === 'host') hostRef.current?.pass();
     else guestRef.current?.pass();
+  }
+
+  function toggleMute() {
+    setMutedState(sfx.toggleMuted());
   }
 
   function onHint() {
@@ -317,6 +369,8 @@ export default function App() {
       onPass={onPass}
       onHint={onHint}
       onRestart={teardown}
+      muted={muted}
+      onToggleMute={toggleMute}
     />
   );
 }
