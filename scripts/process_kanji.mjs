@@ -232,8 +232,18 @@ async function run() {
     return a.kanji.localeCompare(b.kanji);
   });
 
+  const sourceMetadata = fs.existsSync('scripts/data_sources.json')
+    ? JSON.parse(fs.readFileSync('scripts/data_sources.json', 'utf8'))
+    : null;
+
   // 保存用オブジェクトの構築
   const outputData = {
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      generator: 'scripts/process_kanji.mjs',
+      sourceMetadata,
+      note: 'recipes は IDS から機械抽出した未フィルタ候補です。辞書へ直接追加する前に scripts/filter-recipes.mjs の出力や目視で確認してください。',
+    },
     summary: {
       totalKyoikuKanji: kyoikuKanji.size,
       suggestedTotal: suggestedRecipes.length,
@@ -250,8 +260,21 @@ async function run() {
 
   // Markdown レポートの作成
   let md = '# 小学校教育漢字 合成レシピ提案データ\n\n';
-  md += 'このファイルは、ゲームの漢字辞書（`recipes.ts`）に小学6年生までの漢字を追加・拡充するために、ネット上のIDSデータベースから自動抽出したデータです。\n';
-  md += 'サロゲートペアや漢字パーツの判定を施し、パズルに適した綺麗な2分割レシピのみを抽出しています。\n\n';
+  md += 'このファイルは、ゲームの漢字辞書（`recipes.ts`）に小学6年生までの漢字を追加・拡充するために、IDSデータベースから自動抽出した未フィルタ候補データです。\n';
+  md += '字形断片や子ども向けカードにしづらいパーツも含まれるため、辞書へ直接追加せず、`scripts/filter-recipes.mjs` の出力や目視レビューを通してください。\n\n';
+
+  if (sourceMetadata) {
+    md += '## データ出典\n\n';
+    md += `生成日時: ${sourceMetadata.generatedAt}\n\n`;
+    md += '| データ | リポジトリ | commit | ファイル | ライセンス |\n';
+    md += '| :--- | :--- | :--- | :--- | :--- |\n';
+    for (const [key, source] of Object.entries(sourceMetadata.sources ?? {})) {
+      const shortCommit = source.commit ? source.commit.slice(0, 12) : 'unknown';
+      const license = source.license?.spdxId || source.license?.name || 'unknown';
+      md += `| ${key} | ${source.repository ?? ''} | ${shortCommit} | ${source.path ?? ''} | ${license} |\n`;
+    }
+    md += '\n';
+  }
 
   md += '## 統計\n\n';
   md += `| 項目 | 件数 | 割合 |\n`;
@@ -265,10 +288,10 @@ async function run() {
 
   md += '> [!NOTE]\n';
   md += '> **既存定義と不一致 (Mismatch)** の例は、例えば自動抽出では `時 = 日 + 寺` となったが、既存辞書で異なるパーツが定義されているケースなどです。\n';
-  md += '> 基本的には新規追加候補 (New) のみを既存辞書に追加すれば安全に拡張できます。\n\n';
+  md += '> `New` は既存辞書に未登録という意味であり、品質保証済みという意味ではありません。`scripts/accepted_recipes.txt` または目視レビュー済みの候補だけを追加してください。\n\n';
 
   md += '## 新規追加レシピ候補 (New) 一覧\n\n';
-  md += 'Opusがそのまま辞書に追加できるように、学年順にコピペ用のTypeScriptコードも掲載しています。\n\n';
+  md += '学年順の機械抽出候補です。TypeScriptコード列は確認作業用で、未レビューのまま一括追加しないでください。\n\n';
 
   for (let grade = 1; grade <= 6; grade++) {
     const list = suggestedRecipes.filter(r => r.grade === grade && r.status === 'new');
@@ -328,3 +351,7 @@ function getRelationName(idc) {
 }
 
 run();
+
+
+
+
