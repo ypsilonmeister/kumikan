@@ -1,95 +1,48 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPlayers } from './domain/deck';
-import {
-  findPlayablePart,
-  passTurn,
-  startGame,
-  submitPart,
-  toPublicGameState,
-} from './domain/engine';
-import type { GameState, Kanji, Part, PublicGameState } from './domain/types';
-import { GuestController } from './app/guestController';
-import { HostController, type FusionEvent } from './app/hostController';
-import { Hub } from './net/hub';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Part, PublicGameState } from './domain/types';
+import type { GameSession } from './app/session';
+import type { SessionEvent } from './app/events';
+import { createLocalSession } from './app/localSession';
+import { createHostSession } from './app/hostSession';
+import { createGuestSession } from './app/guestSession';
+import { SfxBinding } from './app/sfxBinding';
+import type { SignalingConnection } from './app/signaling';
 import * as sfx from './audio/sfx';
-import type { RtcConnection } from './net/rtcConnection';
 import { ConnectScreen, type ConnectRole } from './ui/screens/ConnectScreen';
 import { GameScreen } from './ui/screens/GameScreen';
 import { LobbyScreen } from './ui/screens/LobbyScreen';
+import type { FusionDisplay } from './ui/components/FuseAnimation';
+import { partDisplay, partReading } from './ui/partAssets';
+import { noticeForActionResult, noticeScopeKey, useNotice } from './ui/useNotice';
 
 type Screen =
   | { name: 'lobby' }
   | { name: 'connect'; role: ConnectRole }
   | { name: 'game' };
 
-type NoticeKind = 'neutral' | 'success' | 'fail';
-interface Notice {
-  kind: NoticeKind;
-  text: string;
-  scopeKey?: string;
-}
-
-const GUEST_PEER_ID = 1; // 2 台 MVP: ホスト=0、子機=1。
-
-function noticeScopeKey(view: PublicGameState): string {
-  const handKey = view.hand.map((part) => part.id).join('|');
-  const fieldKey = view.field.map((part) => part.id).join('|') || 'no-field';
-  return `${view.currentPlayerId ?? 'none'}:${fieldKey}:${handKey}`;
-}
-
-/** GameState から、現在の手番プレイヤー視点の通知スコープキーを作る。 */
-function scopeKeyForState(state: GameState): string {
-  const currentId = state.turnOrder[state.currentTurnIndex] ?? 0;
-  return noticeScopeKey(toPublicGameState(state, currentId));
-}
-
-function defaultGameNotice(view: PublicGameState): string {
-  if (view.phase === 'finished') {
-    return 'ゲーム終了です。';
-  }
-  if (view.field.length === 0) {
-    return '場札がありません。';
-  }
-  return '場札に合うパーツを選んでください。';
-}
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'lobby' });
-  const [notice, setNotice] = useState<Notice>({
-    kind: 'neutral',
-    text: 'あそびかたを選んでください。',
-  });
-  const [fusion, setFusion] = useState<Kanji | null>(null);
+  const [fusion, setFusion] = useState<FusionDisplay | null>(null);
 
-  // ローカルモード: 正準 GameState を直接持つ。
-  const [localGame, setLocalGame] = useState<GameState | null>(null);
-
-  // オンライン共通: 描画する公開状態と自分の playerId。
+  // 描画する公開状態と自分の viewerId（全モード共通）。
   const [view, setView] = useState<PublicGameState | null>(null);
   const [viewerId, setViewerId] = useState(0);
 
   // 効果音のミュート状態（localStorage に永続化）。
   const [muted, setMutedState] = useState(sfx.isMuted());
 
-  const hostRef = useRef<HostController | null>(null);
-  const hubRef = useRef<Hub | null>(null);
-  const guestRef = useRef<GuestController | null>(null);
-  const modeRef = useRef<'local' | 'host' | 'guest'>('local');
-  const handSizeRef = useRef(6);
-  const hostNameRef = useRef('ホスト');
-  const guestNameRef = useRef('ゲスト');
-  // 効果音: 前回の局面と手番を覚えておき、変化したときだけ鳴らす。
-  const prevPhaseRef = useRef<string | null>(null);
-  const prevCurrentRef = useRef<number | null>(null);
-
-  const localCurrentId = localGame?.turnOrder[localGame.currentTurnIndex] ?? 0;
-
-  const gameView: PublicGameState | null = useMemo(() => {
-    if (modeRef.current === 'local') {
-      return localGame ? toPublicGameState(localGame, localCurrentId) : null;
-    }
-    return view;
-  }, [localGame, localCurrentId, view]);
+  const sessionRef = useRef<GameSession | null>(null);
+  const sfxBindingRef = useRef(new SfxBinding());
+  /** action-result の scopeKey 計算用。state イベントで同期更新する（setState は非同期のため）。 */
+  const viewRef = useRef<PublicGameState | null>(null);
+  /** connect 画面へ渡る前に選んだ設定。接続確立時にセッション生成へ使う。 */
+  const pendingRef = useRef<
+    { role: 'host'; name: string; handSize: number } | { role: 'guest'; name: string } | null
+  >(null);
+  const { notice, setNotice } = useNotice(view, {
+    kind: 'neutral',
+    text: 'あそびかたを選んでください。',
+  });
 
   useEffect(() => {
     if (!fusion) return;
@@ -104,189 +57,78 @@ export default function App() {
     return () => window.removeEventListener('pointerdown', prime);
   }, []);
 
-  // 合体成功・漢字完成（fusion 出現）。勝敗確定の手はファンファーレ側に任せる。
-  useEffect(() => {
-    if (fusion && gameView?.phase !== 'finished') {
-      sfx.playSuccess();
+  const handleSessionEvent = useCallback((event: SessionEvent) => {
+    sfxBindingRef.current.handle(event);
+    switch (event.type) {
+      case 'state':
+        viewRef.current = event.view;
+        setView(event.view);
+        setViewerId(event.viewerId);
+        break;
+      case 'fusion':
+        setFusion({
+          char: event.event.char,
+          parts: event.event.from.map((kind) => partReading(kind) ?? kind),
+        });
+        break;
+      case 'action-result': {
+        const scopeKey = viewRef.current ? noticeScopeKey(viewRef.current) : undefined;
+        setNotice(noticeForActionResult(event.result, scopeKey));
+        break;
+      }
     }
-  }, [fusion, gameView?.phase]);
-
-  // ゲーム終了（勝利ファンファーレ）。finished へ遷移した瞬間だけ。
-  useEffect(() => {
-    const phase = gameView?.phase ?? null;
-    if (phase === 'finished' && prevPhaseRef.current && prevPhaseRef.current !== 'finished') {
-      sfx.playWin();
-    }
-    prevPhaseRef.current = phase;
-  }, [gameView?.phase]);
-
-  // 自分の手番が回ってきた通知（オンライン時のみ。ローカルは同一端末交代なので鳴らさない）。
-  useEffect(() => {
-    const current = gameView?.currentPlayerId ?? null;
-    if (
-      modeRef.current !== 'local' &&
-      current !== null &&
-      current === viewerId &&
-      prevCurrentRef.current !== null &&
-      prevCurrentRef.current !== current
-    ) {
-      sfx.playTurn();
-    }
-    prevCurrentRef.current = current;
-  }, [gameView?.currentPlayerId, viewerId]);
-
-  useEffect(() => {
-    if (!notice.scopeKey || !gameView) {
-      return;
-    }
-
-    if (notice.scopeKey !== noticeScopeKey(gameView)) {
-      setNotice({ kind: 'neutral', text: defaultGameNotice(gameView) });
-    }
-  }, [gameView, notice.scopeKey]);
-
-  const showFusion = useCallback((event: FusionEvent) => {
-    setFusion({ char: event.char, from: event.from });
   }, []);
 
-  // ---- ローカルモード ----------------------------------------------------
+  // ---- 開始・接続ハンドラ ------------------------------------------------
   function startLocal(names: string[], handSize: number) {
-    modeRef.current = 'local';
-    const game = startGame(createPlayers(names), handSize);
-    setLocalGame(game);
+    sessionRef.current?.close();
+    sfxBindingRef.current.reset('local');
+    sessionRef.current = createLocalSession(names, handSize, handleSessionEvent);
     setNotice({ kind: 'neutral', text: '場札に合うパーツを選んでください。' });
     setFusion(null);
     setScreen({ name: 'game' });
   }
 
-  function localSubmit(part: Part, fieldPartId?: string) {
-    if (!localGame) return;
-    const result = submitPart(localGame, localCurrentId, part.id, fieldPartId);
-    const currentName = localGame.players.find((p) => p.id === localCurrentId)?.name ?? '';
-
-    if (result.outcome === 'success' && result.kanji) {
-      // submitPart が補充済み。同じプレイヤーが続けて行動する。
-      const updated = result.state;
-      setLocalGame(updated);
-      setFusion(result.kanji);
-      // 結果通知も盤面（updated）が変わったらデフォルトへ戻すため scopeKey を付与。
-      setNotice({
-        kind: 'success',
-        text: `${currentName} が「${result.kanji.char}」を完成。続けて同じ人の番です。`,
-        scopeKey: scopeKeyForState(updated),
-      });
-      return;
-    }
-    // 失敗もパスと同様に場札を1枚増やして手番交代。
-    sfx.playFail();
-    const updated = result.state.phase === 'finished' ? result.state : passTurn(result.state);
-    setLocalGame(updated);
-    // 山札が空のときは場札が増えないので、増えた場合だけその旨を添える。
-    const grew = updated.field.length > result.state.field.length;
-    setNotice({
-      kind: 'fail',
-      text: `${currentName} の組み合わせは成立しませんでした。${grew ? '場札が1枚増えて' : ''}次の番です。`,
-      scopeKey: scopeKeyForState(updated),
-    });
-  }
-
-  function localPass() {
-    if (!localGame) return;
-    const currentName = localGame.players.find((p) => p.id === localCurrentId)?.name ?? '';
-    const updated = passTurn(localGame);
-    setLocalGame(updated);
-    setNotice({ kind: 'neutral', text: `${currentName} はパスしました。`, scopeKey: scopeKeyForState(updated) });
-  }
-
-  function localHint() {
-    if (!localGame) return;
-    const hand = localGame.players.find((p) => p.id === localCurrentId)?.hand ?? [];
-    const playable = findPlayablePart(localGame.field, hand);
-    const scopeKey = gameView ? noticeScopeKey(gameView) : undefined;
-    setNotice(
-      playable
-        ? { kind: 'neutral', text: `ヒント: 「${playable.label}」が合いそうです。`, scopeKey }
-        : { kind: 'neutral', text: '今の手札では成立する組み合わせがありません。', scopeKey },
-    );
-  }
-
-  // ---- ホストモード ------------------------------------------------------
   function startHost(hostName: string, handSize: number) {
-    modeRef.current = 'host';
-    handSizeRef.current = handSize;
-    hostNameRef.current = hostName;
+    pendingRef.current = { role: 'host', name: hostName, handSize };
     setViewerId(0);
     setNotice({ kind: 'neutral', text: '相手の接続を待っています…' });
     setScreen({ name: 'connect', role: 'host' });
   }
 
-  const handleHostConnected = useCallback((conn: RtcConnection) => {
-    // 2 人ぶんのゲームを生成（ホスト=0、子機=1）。
-    const players = createPlayers([hostNameRef.current, '相手']);
-    const game = startGame(players, handSizeRef.current);
-
-    const hub = new Hub();
-    hubRef.current = hub;
-    const host = new HostController(game, hub, {
-      onState: (state) => setView(toPublicGameState(state, 0)),
-      onFusion: showFusion,
-    });
-    hostRef.current = host;
-
-    hub.addGuest(GUEST_PEER_ID, conn);
-    setView(toPublicGameState(game, 0));
-    setNotice({ kind: 'neutral', text: '接続しました。ゲーム開始です。' });
-    setScreen({ name: 'game' });
-  }, [showFusion]);
-
-  // ---- ゲストモード ------------------------------------------------------
   function startGuest(guestName: string) {
-    modeRef.current = 'guest';
-    guestNameRef.current = guestName;
+    pendingRef.current = { role: 'guest', name: guestName };
     setNotice({ kind: 'neutral', text: 'ホストの接続コードを貼り付けてください。' });
     setScreen({ name: 'connect', role: 'guest' });
   }
 
-  const handleGuestConnected = useCallback((conn: RtcConnection) => {
-    // RtcConnection を直接 Transport として包む薄いアダプタ。
-    const guestTransport = {
-      send: (msg: Parameters<RtcConnection['send']>[0]) => conn.send(msg),
-      sendTo: (_peerId: number, msg: Parameters<RtcConnection['send']>[0]) => conn.send(msg),
-      onMessage: (cb: (msg: Parameters<RtcConnection['send']>[0], from: number) => void) =>
-        conn.onMessage((msg) => cb(msg, 0)),
-      onPeerChange: () => undefined,
-      close: () => conn.close(),
-    };
+  const handleHostConnected = useCallback((conn: SignalingConnection) => {
+    const pending = pendingRef.current;
+    const name = pending?.role === 'host' ? pending.name : 'ホスト';
+    const handSize = pending?.role === 'host' ? pending.handSize : 6;
+    sfxBindingRef.current.reset('host');
+    sessionRef.current = createHostSession(name, handSize, conn, handleSessionEvent);
+    setNotice({ kind: 'neutral', text: '接続しました。ゲーム開始です。' });
+    setScreen({ name: 'game' });
+  }, [handleSessionEvent]);
 
-    const guest = new GuestController(
-      guestTransport,
-      {
-        onState: (state) => setView(state),
-        onWelcome: (playerId) => setViewerId(playerId),
-        onFusion: showFusion,
-      },
-      guestNameRef.current,
-    );
-    guestRef.current = guest;
-    guest.start(); // HELLO を送り、ホストに WELCOME を促す（JOIN は WELCOME 後に自動送信）。
+  const handleGuestConnected = useCallback((conn: SignalingConnection) => {
+    const pending = pendingRef.current;
+    const name = pending?.role === 'guest' ? pending.name : 'ゲスト';
+    sfxBindingRef.current.reset('guest');
+    sessionRef.current = createGuestSession(name, conn, handleSessionEvent);
     setNotice({ kind: 'neutral', text: '接続しました。ホストの状態を待っています…' });
     setScreen({ name: 'game' });
-  }, [showFusion]);
+  }, [handleSessionEvent]);
 
-  // ---- 操作ハンドラ（モードで振り分け） --------------------------------
+  // ---- 操作ハンドラ（モード分岐なし） ----------------------------------
   // fieldPartId 省略時は合体できる場札を自動選択（タップ操作）。指定時はドラッグ先。
   function onSubmit(part: Part, fieldPartId?: string) {
-    if (modeRef.current === 'local') localSubmit(part, fieldPartId);
-    else if (modeRef.current === 'host') hostRef.current?.submit(part.id, fieldPartId);
-    else guestRef.current?.submit(part.id, fieldPartId);
+    sessionRef.current?.submit(part.id, fieldPartId);
   }
 
   function onPass() {
-    // パスはユーザー操作起点なので、全モードでこの場で鳴らす。
-    sfx.playPass();
-    if (modeRef.current === 'local') localPass();
-    else if (modeRef.current === 'host') hostRef.current?.pass();
-    else guestRef.current?.pass();
+    sessionRef.current?.pass();
   }
 
   function toggleMute() {
@@ -294,27 +136,23 @@ export default function App() {
   }
 
   function onHint() {
-    if (modeRef.current === 'local') {
-      localHint();
-      return;
-    }
-    if (!view) return;
-    const playable = findPlayablePart(view.field, view.hand);
-    const scopeKey = gameView ? noticeScopeKey(gameView) : undefined;
+    const session = sessionRef.current;
+    if (!session || !view) return;
+    const playable = session.hint();
+    const scopeKey = noticeScopeKey(view);
     setNotice(
       playable
-        ? { kind: 'neutral', text: `ヒント: 「${playable.label}」が合いそうです。`, scopeKey }
+        ? { kind: 'neutral', text: `ヒント: 「${partDisplay(playable.kind).label}」が合いそうです。`, scopeKey }
         : { kind: 'neutral', text: '今の手札では成立する組み合わせがありません。', scopeKey },
     );
   }
 
   function teardown() {
-    hubRef.current?.close(); // ホスト側の全 DataChannel を閉じる。
-    guestRef.current?.close(); // 子機側の DataChannel を閉じ、以降のコールバックを止める。
-    hubRef.current = null;
-    hostRef.current = null;
-    guestRef.current = null;
-    setLocalGame(null);
+    sessionRef.current?.close();
+    sfxBindingRef.current.reset();
+    sessionRef.current = null;
+    pendingRef.current = null;
+    viewRef.current = null;
     setView(null);
     setViewerId(0);
     setFusion(null);
@@ -343,7 +181,7 @@ export default function App() {
     );
   }
 
-  if (!gameView) {
+  if (!view) {
     return (
       <main className="app-shell">
         <section className="setup-panel">
@@ -356,13 +194,10 @@ export default function App() {
     );
   }
 
-  // ローカルは手番プレイヤーが操作主体。オンラインは自分。
-  const effectiveViewerId = modeRef.current === 'local' ? localCurrentId : viewerId;
-
   return (
     <GameScreen
-      view={gameView}
-      viewerId={effectiveViewerId}
+      view={view}
+      viewerId={viewerId}
       notice={notice}
       fusion={fusion}
       onSubmit={onSubmit}

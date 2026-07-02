@@ -1,11 +1,7 @@
 export interface Part {
   id: string;
+  /** レシピ照合キー（例: "木" / "辶" / "さんずい"）。表示解決は ui/partAssets が行う。 */
   kind: string;
-  label: string;
-  /** 部首など、読みが分かりにくいパーツの「よみ」（任意）。表示で併記する。 */
-  reading?: string;
-  /** 部首画像のファイル名（public/parts/ 配下）。あれば文字でなく画像で表示。 */
-  image?: string;
 }
 
 export interface Kanji {

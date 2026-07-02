@@ -71,17 +71,9 @@ describe('recipes', () => {
     expect(createDeck(copies)).toHaveLength(RECIPES_PER_GAME * 2 * copies);
   });
 
-  it('labels radical parts with their reading (しんにょう など)', () => {
+  it('makePart returns only id and kind (表示解決は ui/partAssets が行う)', () => {
     const shinnyou = makePart('辶', 0);
-    expect(shinnyou.label).toBe('しんにょう');
-    expect(shinnyou.reading).toBe('しんにょう');
-    expect(shinnyou.image).toBe('shinnyou.svg'); // 部首は画像表示
-    expect(shinnyou.kind).toBe('辶'); // 照合キーは部首のまま
-
-    // 単体で読める漢字パーツはグリフのまま。
-    const ki = makePart('木', 1);
-    expect(ki.label).toBe('木');
-    expect(ki.reading).toBeUndefined();
+    expect(shinnyou).toEqual({ id: 'part_0_辶', kind: '辶' });
   });
 });
 
@@ -135,7 +127,7 @@ describe('engine', () => {
     expect(updated.phase).toBe('playing');
   });
 
-  it('adds a field card on pass instead of replacing it (パスで場札が増える)', () => {
+  it('draws to the acting player and grows the field on pass (パスで手札も場札も増える)', () => {
     const state: GameState = {
       ...baseState(),
       field: [makePart('木', 20), makePart('火', 21)],
@@ -143,22 +135,27 @@ describe('engine', () => {
     };
     const passed = passTurn(state);
 
-    // 手番が進み、既存の場札はそのまま、山札から1枚（日）が積み上がる。
     expect(passed.currentTurnIndex).toBe(1);
-    expect(passed.field.map((p) => p.kind)).toEqual(['木', '火', '日']);
-    expect(passed.deck.map((p) => p.kind)).toEqual(['月', '女']);
-    // 全カードは保存される（場2 + 山3 = 5）。
-    expect(passed.field.length + passed.deck.length).toBe(5);
+    // パスした本人（player 0）の手札に山札先頭（日）が1枚増える。
+    expect(passed.players[0].hand.map((p) => p.kind)).toEqual(['目', '火', '日']);
+    // 場札も山札から1枚（月）積み増す。既存はそのまま。
+    expect(passed.field.map((p) => p.kind)).toEqual(['木', '火', '月']);
+    expect(passed.deck.map((p) => p.kind)).toEqual(['女']);
+    // 全カードは保存される（手札3 + 場2 + 山3 = 8）。
+    const total =
+      passed.players.reduce((n, p) => n + p.hand.length, 0) + passed.field.length + passed.deck.length;
+    expect(total).toBe(8);
   });
 
-  it('does not change the field on pass when the deck is empty', () => {
+  it('does not draw on pass when the deck is empty', () => {
     const state: GameState = {
       ...baseState(),
       field: [makePart('木', 30)],
       deck: [],
     };
     const passed = passTurn(state);
-    expect(passed.field.map((p) => p.kind)).toEqual(['木']); // 追加なし
+    expect(passed.field.map((p) => p.kind)).toEqual(['木']); // 場札の追加なし
+    expect(passed.players[0].hand.map((p) => p.kind)).toEqual(['目', '火']); // 手札も増えない
     expect(passed.currentTurnIndex).toBe(1); // 手番だけ進む
   });
 

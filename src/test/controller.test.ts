@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { makePart } from '../domain/deck';
-import { HostController, type FusionEvent } from '../app/hostController';
+import { HostController } from '../app/hostController';
+import type { FusionEvent } from '../app/events';
 import type { GameState } from '../domain/types';
-import type { NetMessage } from '../net/messages';
+import { netMessage, type NetMessage } from '../net/messages';
 import type { MessageHandler, PeerChangeHandler, Transport } from '../net/transport';
 
 /** 送信を記録し、受信を手で注入できるテスト用 Transport。 */
@@ -75,7 +76,7 @@ describe('HostController', () => {
   it('ignores ACTION_SUBMIT from a non-turn player and keeps the turn', () => {
     const { transport, getState } = setup();
     // 手番はプレイヤー0。プレイヤー1が提示しても無視されるべき。
-    transport.receive({ type: 'ACTION_SUBMIT', payload: { partId: 'part_3_月' } }, 1);
+    transport.receive(netMessage({ type: 'ACTION_SUBMIT', payload: { partId: 'part_3_月' } }), 1);
 
     expect(getState()).toBeNull(); // broadcastState が呼ばれていない＝状態不変。
   });
@@ -83,7 +84,7 @@ describe('HostController', () => {
   it('advances the turn only when the turn player submits a non-matching part', () => {
     const { host, getState } = setup();
     // 手番プレイヤー0が「火」を提示 → 木+火 は不成立 → 手番交代。
-    host.submit('part_2_火');
+    host.submit(0, 'part_2_火');
 
     const state = getState();
     expect(state?.currentTurnIndex).toBe(1);
@@ -92,7 +93,7 @@ describe('HostController', () => {
   it('keeps the same player on success and draws a new field', () => {
     const { transport, host, getState, fusions } = setup();
     // 手番プレイヤー0が「目」を提示 → 木+目=相 成立 → 同じ手番のまま新場札。
-    host.submit('part_1_目');
+    host.submit(0, 'part_1_目');
 
     const state = getState();
     expect(state?.currentTurnIndex).toBe(0);
@@ -106,14 +107,14 @@ describe('HostController', () => {
 
   it('ignores a stale/unknown partId without advancing the turn', () => {
     const { host, getState } = setup();
-    host.submit('does_not_exist');
+    host.submit(0, 'does_not_exist');
     expect(getState()).toBeNull(); // 何も起きない。
   });
 
   it('reflects a guest JOIN name in the broadcast state', () => {
     const { transport } = setup();
     transport.peerChange(1, true); // welcome + broadcast
-    transport.receive({ type: 'JOIN', payload: { name: 'こども' } }, 1);
+    transport.receive(netMessage({ type: 'JOIN', payload: { name: 'こども' } }), 1);
 
     const sync = transport.lastStateSyncTo(1);
     expect(sync?.players.find((p) => p.id === 1)?.name).toBe('こども');
@@ -121,13 +122,13 @@ describe('HostController', () => {
 
   it('ignores ACTION_PASS from a non-turn player', () => {
     const { transport, getState } = setup();
-    transport.receive({ type: 'ACTION_PASS', payload: {} }, 1);
+    transport.receive(netMessage({ type: 'ACTION_PASS', payload: {} }), 1);
     expect(getState()).toBeNull();
   });
 
   it('replies to HELLO with a WELCOME (初期同期の保証)', () => {
     const { transport } = setup();
-    transport.receive({ type: 'HELLO', payload: {} }, 1);
+    transport.receive(netMessage({ type: 'HELLO', payload: {} }), 1);
 
     const welcome = transport.sent.find((e) => e.peerId === 1 && e.msg.type === 'WELCOME');
     expect(welcome).toBeDefined();

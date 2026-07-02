@@ -126,10 +126,10 @@ export function submitPart(
 }
 
 /**
- * 手番を次のプレイヤーへ進めつつ、**場札を山札から1枚増やす**（入れ替えではなく追加）。
- * 自発的なパスでも、合体に失敗した提出でも呼ぶ。点を取れずに手番が移るたびに
- * 合体候補が積み上がるので、場札がどの手札とも合わずに全員が手詰まる事故を防ぐ。
- * 山札が空なら追加せず手番送りのみ。
+ * 手番を次のプレイヤーへ進めつつ、**パス/失敗した本人の手札と場札を山札から1枚ずつ増やす**。
+ * 自発的なパスでも、合体に失敗した提出でも呼ぶ。点を取れずに手番が移るたびに、
+ * 本人の手札（合体の片側）と場札（もう片側）双方に新しい選択肢が積み上がるので、
+ * 手札がどの場札とも合わない手詰まりを解消する。山札が空なら引かず手番送りのみ。
  */
 export function passTurn(state: GameState): GameState {
   if (state.phase !== 'playing') {
@@ -138,15 +138,22 @@ export function passTurn(state: GameState): GameState {
 
   const nextIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
 
-  // 山札が無ければ追加できないので通常の手番送りのみ。
+  // 山札が無ければ引けないので通常の手番送りのみ。
   if (state.deck.length === 0) {
     return checkGameEnd({ ...state, currentTurnIndex: nextIndex });
   }
 
-  // 既存の場札はそのまま残し、山札から1枚だけ場に足す。
   const deck = [...state.deck];
-  const field = [...state.field, deck.shift() as Part];
-  return checkGameEnd({ ...state, currentTurnIndex: nextIndex, field, deck });
+  // 1. パス/失敗した本人の手札を1枚増やす（噛み合わない手札に新しい選択肢を与える）。
+  const players = clonePlayers(state.players);
+  const acting = players.find((player) => player.id === state.turnOrder[state.currentTurnIndex]);
+  if (acting) {
+    acting.hand.push(deck.shift() as Part);
+  }
+  // 2. 場札も山札から1枚積み増す。山札が尽きていれば手札のみで終える。
+  const field = deck.length > 0 ? [...state.field, deck.shift() as Part] : [...state.field];
+
+  return checkGameEnd({ ...state, players, field, deck, currentTurnIndex: nextIndex });
 }
 
 export function checkGameEnd(state: GameState): GameState {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RtcConnection } from '../../net/rtcConnection';
-import { decodeSignal, encodeSignal } from '../../net/sdp';
+import {
+  createInitialSignalingState,
+  SignalingController,
+  type SignalingConnection,
+} from '../../app/signaling';
 import { QrDisplay } from '../components/QrDisplay';
 import { QrScanner } from '../components/QrScanner';
 
@@ -9,48 +12,31 @@ export type ConnectRole = 'host' | 'guest';
 interface ConnectScreenProps {
   role: ConnectRole;
   /** 接続が open したら、確立済み接続を引き渡す。 */
-  onConnected: (conn: RtcConnection) => void;
+  onConnected: (conn: SignalingConnection) => void;
   onCancel: () => void;
 }
 
-type HostStep = 'offer' | 'answer';
-type GuestStep = 'offer' | 'answer';
-
 export function ConnectScreen({ role, onConnected, onCancel }: ConnectScreenProps) {
-  const connRef = useRef<RtcConnection | null>(null);
-  const [outgoing, setOutgoing] = useState('');
-  const [incoming, setIncoming] = useState('');
-  const [step, setStep] = useState<HostStep | GuestStep>('offer');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const signalingRef = useRef<SignalingController | null>(null);
+  const [signaling, setSignaling] = useState(createInitialSignalingState);
   const [copied, setCopied] = useState(false);
   const [scanning, setScanning] = useState(false);
 
   const handleScan = useCallback((text: string) => {
-    setIncoming(text);
+    signalingRef.current?.setIncoming(text);
     setScanning(false);
-    setError(null);
   }, []);
 
   // マウント時に接続を 1 つ用意。ホストは即 offer 生成を始める。
   useEffect(() => {
-    const conn = new RtcConnection();
-    connRef.current = conn;
-    conn.onOpen(() => onConnected(conn));
-
-    if (role === 'host') {
-      setBusy(true);
-      conn
-        .createOffer()
-        .then((offer) => setOutgoing(encodeSignal(offer)))
-        .catch(() => setError('オファーの生成に失敗しました。'))
-        .finally(() => setBusy(false));
-    }
+    const controller = new SignalingController(role, setSignaling, onConnected);
+    signalingRef.current = controller;
+    controller.start();
 
     return () => {
-      // open 済みで onConnected 済みなら閉じない。未確立なら破棄。
-      if (!conn.isOpen) {
-        conn.close();
+      controller.closeIfPending();
+      if (signalingRef.current === controller) {
+        signalingRef.current = null;
       }
     };
     // role 固定。onConnected は安定参照前提（App 側で useCallback）。
@@ -59,45 +45,14 @@ export function ConnectScreen({ role, onConnected, onCancel }: ConnectScreenProp
 
   async function copyOutgoing() {
     try {
-      await navigator.clipboard.writeText(outgoing);
+      await navigator.clipboard.writeText(signaling.outgoing);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      setError('クリップボードにコピーできませんでした。手動で選択してください。');
-    }
-  }
-
-  // 子機: 受け取った offer から answer を生成。
-  async function guestMakeAnswer() {
-    const conn = connRef.current;
-    if (!conn) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const answer = await conn.createAnswer(decodeSignal(incoming));
-      setOutgoing(encodeSignal(answer));
-      setIncoming('');
-      setStep('answer');
-    } catch {
-      setError('オファーの読み取りに失敗しました。文字列を確認してください。');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ホスト: 子機から返ってきた answer を適用。
-  async function hostAcceptAnswer() {
-    const conn = connRef.current;
-    if (!conn) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await conn.acceptAnswer(decodeSignal(incoming));
-      // 以降は onOpen → onConnected で画面遷移。
-    } catch {
-      setError('アンサーの読み取りに失敗しました。文字列を確認してください。');
-    } finally {
-      setBusy(false);
+      setSignaling((current) => ({
+        ...current,
+        error: 'クリップボードにコピーできませんでした。手動で選択してください。',
+      }));
     }
   }
 
@@ -111,26 +66,26 @@ export function ConnectScreen({ role, onConnected, onCancel }: ConnectScreenProp
           <h1>{heading}</h1>
         </div>
 
-        {error && <div className="notice notice--fail">{error}</div>}
+        {signaling.error && <div className="notice notice--fail">{signaling.error}</div>}
 
         {role === 'host' && (
           <>
             <ConnectField
               label="① この「オファー」を相手に渡す（QR をスキャンしてもらう）"
-              value={busy && !outgoing ? '生成中…' : outgoing}
+              value={signaling.busy && !signaling.outgoing ? '生成中…' : signaling.outgoing}
               readOnly
-              onCopy={outgoing ? copyOutgoing : undefined}
+              onCopy={signaling.outgoing ? copyOutgoing : undefined}
               copied={copied}
             />
-            {outgoing && <QrDisplay value={outgoing} />}
+            {signaling.outgoing && <QrDisplay value={signaling.outgoing} />}
 
             {scanning ? (
               <QrScanner onResult={handleScan} onCancel={() => setScanning(false)} />
             ) : (
               <ConnectField
                 label="② 相手の「アンサー」を読み取り or 貼り付け"
-                value={incoming}
-                onChange={setIncoming}
+                value={signaling.incoming}
+                onChange={(value) => signalingRef.current?.setIncoming(value)}
                 placeholder="相手の画面の文字列を貼り付け"
                 onScan={() => setScanning(true)}
               />
@@ -138,23 +93,23 @@ export function ConnectScreen({ role, onConnected, onCancel }: ConnectScreenProp
             <button
               className="primary-action"
               type="button"
-              disabled={busy || !incoming.trim()}
-              onClick={hostAcceptAnswer}
+              disabled={signaling.busy || !signaling.incoming.trim()}
+              onClick={() => signalingRef.current?.hostAcceptAnswer()}
             >
               接続する
             </button>
           </>
         )}
 
-        {role === 'guest' && step === 'offer' && (
+        {role === 'guest' && signaling.step === 'offer' && (
           <>
             {scanning ? (
               <QrScanner onResult={handleScan} onCancel={() => setScanning(false)} />
             ) : (
               <ConnectField
                 label="① ホストの「オファー」を読み取り or 貼り付け"
-                value={incoming}
-                onChange={setIncoming}
+                value={signaling.incoming}
+                onChange={(value) => signalingRef.current?.setIncoming(value)}
                 placeholder="ホストの画面の文字列を貼り付け"
                 onScan={() => setScanning(true)}
               />
@@ -162,24 +117,24 @@ export function ConnectScreen({ role, onConnected, onCancel }: ConnectScreenProp
             <button
               className="primary-action"
               type="button"
-              disabled={busy || !incoming.trim()}
-              onClick={guestMakeAnswer}
+              disabled={signaling.busy || !signaling.incoming.trim()}
+              onClick={() => signalingRef.current?.guestMakeAnswer()}
             >
               アンサーを作る
             </button>
           </>
         )}
 
-        {role === 'guest' && step === 'answer' && (
+        {role === 'guest' && signaling.step === 'answer' && (
           <>
             <ConnectField
               label="② この「アンサー」をホストに渡す（QR をスキャンしてもらう）"
-              value={outgoing}
+              value={signaling.outgoing}
               readOnly
-              onCopy={outgoing ? copyOutgoing : undefined}
+              onCopy={signaling.outgoing ? copyOutgoing : undefined}
               copied={copied}
             />
-            {outgoing && <QrDisplay value={outgoing} />}
+            {signaling.outgoing && <QrDisplay value={signaling.outgoing} />}
             <div className="notice notice--neutral">ホストが接続するのを待っています…</div>
           </>
         )}

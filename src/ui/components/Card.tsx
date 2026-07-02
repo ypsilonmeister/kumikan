@@ -1,6 +1,6 @@
 import type { PointerEvent } from 'react';
 import type { Part } from '../../domain/types';
-import { partImageUrl } from '../partImage';
+import { partDisplay } from '../partAssets';
 
 interface CardProps {
   part: Part;
@@ -12,8 +12,9 @@ interface CardProps {
 }
 
 export function Card({ part, selected = false, disabled = false, dragging = false, onPointerDown }: CardProps) {
+  const display = partDisplay(part.kind);
   // 1 文字（漢字グリフ）は大きく、複数文字（よみ）は小さく表示する。
-  const isWord = [...part.label].length > 1;
+  const isWord = [...display.label].length > 1;
   return (
     <button
       className={`kanji-card${selected ? ' is-selected' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -22,12 +23,12 @@ export function Card({ part, selected = false, disabled = false, dragging = fals
       // ドラッグ中の誤スクロール防止。タッチでも pointermove を受け取れるようにする。
       style={{ touchAction: 'none' }}
       onPointerDown={(event) => onPointerDown?.(part, event)}
-      aria-label={`${part.label} のカード`}
+      aria-label={`${display.label} のカード`}
     >
-      {part.image ? (
-        <img className="kanji-card__img" src={partImageUrl(part.image)} alt={part.label} draggable={false} />
+      {display.imageUrl ? (
+        <img className="kanji-card__img" src={display.imageUrl} alt={display.label} draggable={false} />
       ) : (
-        <span className={isWord ? 'is-word' : ''}>{part.label}</span>
+        <span className={isWord ? 'is-word' : ''}>{display.label}</span>
       )}
     </button>
   );

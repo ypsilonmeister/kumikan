@@ -1,7 +1,7 @@
 import type { PublicGameState } from '../domain/types';
-import type { NetMessage } from '../net/messages';
+import { netMessage, type NetMessage } from '../net/messages';
 import type { Transport } from '../net/transport';
-import type { FusionEvent } from './hostController';
+import type { ActionResult, FusionEvent } from './events';
 
 export interface GuestCallbacks {
   /** ホストから配信された確定状態を描画する。 */
@@ -10,6 +10,8 @@ export interface GuestCallbacks {
   onWelcome: (playerId: number) => void;
   /** 合体演出。 */
   onFusion: (event: FusionEvent) => void;
+  /** 成功/失敗/パスの結果。 */
+  onActionResult?: (result: ActionResult) => void;
 }
 
 /**
@@ -34,17 +36,17 @@ export class GuestController {
    */
   start(): void {
     if (this.disposed) return;
-    this.transport.send({ type: 'HELLO', payload: {} });
+    this.transport.send(netMessage({ type: 'HELLO', payload: {} }));
   }
 
   submit(partId: string, fieldPartId?: string): void {
     if (this.disposed) return;
-    this.transport.send({ type: 'ACTION_SUBMIT', payload: { partId, fieldPartId } });
+    this.transport.send(netMessage({ type: 'ACTION_SUBMIT', payload: { partId, fieldPartId } }));
   }
 
   pass(): void {
     if (this.disposed) return;
-    this.transport.send({ type: 'ACTION_PASS', payload: {} });
+    this.transport.send(netMessage({ type: 'ACTION_PASS', payload: {} }));
   }
 
   /** ロビーへ戻る等で破棄。以降のコールバック・送信を止め、接続を閉じる。 */
@@ -63,7 +65,7 @@ export class GuestController {
         this.callbacks.onState(msg.payload.state);
         // ホストの受信ハンドラが確実に立っている（WELCOME が届いた）ので、
         // ここで初めて JOIN を送り、取りこぼしを防ぐ。
-        this.transport.send({ type: 'JOIN', payload: { name: this.name } });
+        this.transport.send(netMessage({ type: 'JOIN', payload: { name: this.name } }));
         break;
       case 'STATE_SYNC':
         this.callbacks.onState(msg.payload);
@@ -76,6 +78,9 @@ export class GuestController {
             from: [msg.payload.field, msg.payload.part],
           });
         }
+        break;
+      case 'ACTION_RESULT':
+        this.callbacks.onActionResult?.(msg.payload);
         break;
       default:
         break; // GAME_OVER は STATE_SYNC の phase で描画済み。

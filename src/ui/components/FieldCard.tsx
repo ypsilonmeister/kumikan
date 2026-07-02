@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import type { Part } from '../../domain/types';
-import { partImageUrl } from '../partImage';
+import { partDisplay } from '../partAssets';
 
 interface FieldCardProps {
   part: Part | null;
@@ -17,18 +17,19 @@ export const FieldCard = forwardRef<HTMLDivElement, FieldCardProps>(function Fie
   ref,
 ) {
   const stacked = count > 1;
+  const display = part ? partDisplay(part.kind) : null;
   return (
     <div
       ref={ref}
       className={`field-card${active ? ' is-active-drop' : ''}${canDrop ? ' can-drop' : ''}${stacked ? ' is-stacked' : ''}`}
       aria-live="polite"
     >
-      {part ? (
+      {part && display ? (
         <>
-          {part.image ? (
-            <img className="field-card__img" src={partImageUrl(part.image)} alt={part.label} draggable={false} />
+          {display.imageUrl ? (
+            <img className="field-card__img" src={display.imageUrl} alt={display.label} draggable={false} />
           ) : (
-            <strong className={[...part.label].length > 1 ? 'is-word' : ''}>{part.label}</strong>
+            <strong className={[...display.label].length > 1 ? 'is-word' : ''}>{display.label}</strong>
           )}
           {stacked && (
             <span className="field-card__count" aria-label={`${count}枚`}>

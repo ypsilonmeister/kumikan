@@ -1,9 +1,10 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Kanji, Part, PublicGameState } from '../../domain/types';
+import type { Part, PublicGameState } from '../../domain/types';
 import { FieldCard } from '../components/FieldCard';
-import { FuseAnimation } from '../components/FuseAnimation';
+import { FuseAnimation, type FusionDisplay } from '../components/FuseAnimation';
 import { Hand } from '../components/Hand';
+import { partDisplay } from '../partAssets';
 
 interface GameScreenProps {
   view: PublicGameState;
@@ -13,7 +14,7 @@ interface GameScreenProps {
     kind: string;
     text: string;
   };
-  fusion: Kanji | null;
+  fusion: FusionDisplay | null;
   /** fieldPartId 省略時はタップ（合体できる場札を自動選択）。 */
   onSubmit: (part: Part, fieldPartId?: string) => void;
   onPass: () => void;
@@ -113,7 +114,7 @@ export function GameScreen({
       }
       g.dragging = true;
       setDraggingPartId(g.part.id);
-      setGhost({ label: g.part.label, x: event.clientX, y: event.clientY });
+      setGhost({ label: partDisplay(g.part.kind).label, x: event.clientX, y: event.clientY });
       setOverFieldId(fieldIdAtPoint(event.clientX, event.clientY));
     }
 
@@ -225,7 +226,7 @@ export function GameScreen({
       </section>
 
       <section className="table-area" aria-label="場">
-        <FuseAnimation kanji={fusion} />
+        <FuseAnimation fusion={fusion} />
         <div className={`notice notice--${notice.kind}`}>{notice.text}</div>
 
         <div className="field-layout">

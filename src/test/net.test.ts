@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeSignal, encodeSignal, extractSignal, rebuildSdp } from '../net/sdp';
-import { deserialize, serialize, type NetMessage } from '../net/messages';
+import { deserialize, netMessage, serialize, type NetMessage } from '../net/messages';
 import { Inbox } from '../net/inbox';
 
 /** ブラウザが生成する典型的な data-only オファー SDP（複数 candidate 入り）。 */
@@ -109,16 +109,22 @@ describe('sdp munging (仕様 3.1 / 3.2)', () => {
 
 describe('net message serialization', () => {
   it('round-trips a guest action', () => {
-    const msg: NetMessage = { type: 'ACTION_SUBMIT', payload: { partId: 'part_1_目' } };
+    const msg: NetMessage = netMessage({ type: 'ACTION_SUBMIT', payload: { partId: 'part_1_目' } });
     expect(deserialize(serialize(msg))).toEqual(msg);
   });
 
   it('round-trips a submit result event', () => {
-    const msg: NetMessage = {
+    const msg: NetMessage = netMessage({
       type: 'SUBMIT_RESULT',
       payload: { playerId: 1, field: '木', part: '目', result: '相' },
-    };
+    });
     expect(deserialize(serialize(msg))).toEqual(msg);
+  });
+
+  it('rejects messages from a different protocol version', () => {
+    expect(() =>
+      deserialize(JSON.stringify({ v: 999, type: 'ACTION_PASS', payload: {} })),
+    ).toThrow(/Unsupported protocol version/);
   });
 });
 
@@ -134,10 +140,10 @@ describe('Inbox (handler 登録前の取りこぼし防止)', () => {
     handSize: 6,
     winnerId: null,
   };
-  const welcome: NetMessage = {
+  const welcome: NetMessage = netMessage({
     type: 'WELCOME',
     payload: { playerId: 1, state: publicState },
-  };
+  });
 
   it('flushes messages that arrived before a handler was registered', () => {
     const inbox = new Inbox();
@@ -152,7 +158,7 @@ describe('Inbox (handler 登録前の取りこぼし防止)', () => {
 
   it('preserves arrival order across the handler boundary', () => {
     const inbox = new Inbox();
-    const a: NetMessage = { type: 'STATE_SYNC', payload: publicState };
+    const a: NetMessage = netMessage({ type: 'STATE_SYNC', payload: publicState });
     inbox.deliver(welcome); // 登録前
     const received: NetMessage[] = [];
     inbox.setHandler((msg) => received.push(msg));
